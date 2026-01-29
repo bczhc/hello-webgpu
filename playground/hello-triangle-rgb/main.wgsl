@@ -17,13 +17,10 @@ fn vs(@builtin(vertex_index) vertexIndex: u32)
         vec4f(0.0, 0.0, 1.0, 1.0),
     );
 
-    var out: VsOut;
-    out.pos = vec4f(pos[vertexIndex], 0.0, 1.0);
-    out.color = colors[vertexIndex];
-    return out;
+    return VsOut(vec4f(pos[vertexIndex], 0.0, 1.0), colors[vertexIndex]);
 }
 
 @fragment
-fn fs(in: VsOut) -> @location(0) vec4f {
-    return in.color;
+fn fs(@location(0) color: vec4f) -> @location(0) vec4f {
+    return color;
 }
