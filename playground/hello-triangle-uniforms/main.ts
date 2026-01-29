@@ -1,5 +1,16 @@
 import shader from "./main.wgsl?raw";
 
+const rand = (min: number, max: number) => {
+    if (min === undefined) {
+        min = 0;
+        max = 1;
+    } else if (max === undefined) {
+        max = min;
+        min = 0;
+    }
+    return min + Math.random() * (max - min);
+};
+
 (async () => {
     let canvas = document.querySelector('canvas')!!;
     let context = canvas.getContext('webgpu');
@@ -25,19 +36,6 @@ import shader from "./main.wgsl?raw";
     }
 
     let shaderModule = createShaderModule();
-    let uniformGpuBuffer = device.createBuffer({
-        size: 32,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-        mappedAtCreation: false,
-    });
-    let uniformBuffer = (() => {
-        let b = new ArrayBuffer(32);
-        return {
-            buffer: b,
-            color: new Float32Array(b, 0, 4),
-            scale: new Float32Array(b, 16, 1),
-        }
-    })();
 
     let pipeline = device.createRenderPipeline({
         layout: 'auto',
@@ -52,38 +50,69 @@ import shader from "./main.wgsl?raw";
         }
     })
 
-    function render(scale: number, color: Array<number>, loadOp: GPULoadOp) {
-        uniformBuffer.color.set(color);
-        uniformBuffer.scale.set([scale]);
-        let bindGroup = device.createBindGroup({
-            layout: pipeline.getBindGroupLayout(0),
-            entries: [
-                {binding: 0, resource: uniformGpuBuffer},
-            ]
-        });
-        device.queue.writeBuffer(uniformGpuBuffer, 0, uniformBuffer.buffer);
+    function createEntities() {
+        let entities = [];
+        let scale = 2.0;
+        for (let i = 0; i < 10; i++) {
+            let uniformGpuBuffer = device.createBuffer({
+                size: 32,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+                mappedAtCreation: false,
+            });
+            let uniformBuffer = (() => {
+                let b = new ArrayBuffer(32);
+                return {
+                    buffer: b,
+                    color: new Float32Array(b, 0, 4),
+                    scale: new Float32Array(b, 16, 1),
+                }
+            })();
+            uniformBuffer.color.set([rand(0, 1), rand(0, 1), rand(0, 1), 1]);
+            uniformBuffer.scale.set([scale]);
 
+            entities.push({
+                uniformGpuBuffer,
+                uniformBuffer,
+                bindGroup: device.createBindGroup({
+                    layout: pipeline.getBindGroupLayout(0),
+                    entries: [{binding: 0, resource: uniformGpuBuffer}],
+                })
+            });
+
+            scale -= 0.2;
+        }
+        return entities;
+    }
+
+    let entities = createEntities();
+
+    function render() {
         let encoder = device.createCommandEncoder();
 
         let pass = encoder.beginRenderPass({
             colorAttachments: [
                 {
                     view: context!!.getCurrentTexture(),
-                    loadOp,
+                    loadOp: 'clear',
                     storeOp: 'store',
                     clearValue: [0.3, 0.3, 0.3, 1]
                 },
             ],
         });
         pass.setPipeline(pipeline);
-        pass.setBindGroup(0, bindGroup);
-        pass.draw(3);
+
+        // pick different uniform buffer on each draw
+        for (let entity of entities) {
+            device.queue.writeBuffer(entity.uniformGpuBuffer, 0, entity.uniformBuffer.buffer);
+            pass.setBindGroup(0, entity.bindGroup);
+            pass.draw(3);
+        }
+
         pass.end()
 
         let commandBuffer = encoder.finish();
         device.queue.submit([commandBuffer]);
     }
 
-    render(2, [1, 1, 0, 1], 'clear');
-    render(1, [1, 0, 0, 1], 'load');
+    render();
 })();
