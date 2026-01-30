@@ -1,13 +1,16 @@
 import shader from "./main.wgsl?raw";
-import {joinedPrimitivesIndexBuffer} from "../utils";
+import {getImageRawData, joinedPrimitivesIndexBuffer} from "../utils";
 import GUI from "muigui";
+import img from '../../res/container.jpg';
 
 let guiParam = {
     magFilter: 'nearest',
+    texture: '1',
 };
 
 let gui = new GUI();
 gui.add(guiParam, 'magFilter', ['linear', 'nearest']);
+gui.add(guiParam, 'texture', ['1', '2']);
 
 (async () => {
     let canvas = document.querySelector('canvas')!!;
@@ -82,14 +85,20 @@ gui.add(guiParam, 'magFilter', ['linear', 'nearest']);
         mappedAtCreation: false,
     });
 
-    let textureData = createTextureData();
-    let texture = device.createTexture({
-        size: [textureData.kTextureWidth, textureData.kTextureHeight],
-        format: 'rgba8unorm',
-        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
-    });
+    async function render() {
+        let textureData: TextureData | null = null;
+        if (guiParam.texture == '1') {
+            textureData = createTexture1();
+        } else if (guiParam.texture == '2') {
+            textureData = await createTexture2();
+        }
+        if (textureData === null) return;
+        let texture = device.createTexture({
+            size: [textureData.width, textureData.height],
+            format: 'rgba8unorm',
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+        });
 
-    function render() {
         let sampler = device.createSampler({
             magFilter: guiParam.magFilter as GPUFilterMode,
             addressModeU: 'clamp-to-edge',
@@ -119,9 +128,9 @@ gui.add(guiParam, 'magFilter', ['linear', 'nearest']);
         device.queue.writeBuffer(indexBuffer, 0, indexBufferData);
         device.queue.writeTexture(
             {texture},
-            textureData.textureData,
-            {bytesPerRow: textureData.kTextureWidth * 4},
-            {width: textureData.kTextureWidth, height: textureData.kTextureHeight},
+            textureData.data as GPUAllowSharedBufferSource,
+            {bytesPerRow: textureData.width * 4},
+            {width: textureData.width, height: textureData.height},
         );
 
         pass.setPipeline(pipeline);
@@ -136,10 +145,16 @@ gui.add(guiParam, 'magFilter', ['linear', 'nearest']);
     }
 
     gui.onChange(render);
-    render();
+    await render();
 })();
 
-function createTextureData() {
+interface TextureData {
+    width: number,
+    height: number,
+    data: Uint8Array,
+}
+
+function createTexture1(): TextureData {
     const kTextureWidth = 5;
     const kTextureHeight = 7;
     const _ = [255, 0, 0, 255]; // red
@@ -156,8 +171,17 @@ function createTextureData() {
         _, _, _, _, _,
     ].flat());
     return {
-        kTextureWidth,
-        kTextureHeight,
-        textureData,
+        width: kTextureWidth,
+        height: kTextureHeight,
+        data: textureData,
     };
+}
+
+async function createTexture2(): Promise<TextureData> {
+    let imageData = await getImageRawData(img);
+    return {
+        width: imageData.width,
+        height: imageData.height,
+        data: imageData.data,
+    }
 }
