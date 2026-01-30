@@ -1,7 +1,8 @@
 import shader from "./main.wgsl?raw";
 import {generateMipmaps, getImageRawData, joinedPrimitivesIndexBuffer} from "../utils";
 import GUI from "muigui";
-import img from '../../res/container.jpg';
+import containerImg from '../../res/container.jpg';
+import faceImg from '../../res/face.png';
 
 let settings = {
     magFilter: 'nearest',
@@ -11,6 +12,7 @@ let settings = {
     samplingTransform: '1',
     speed: 0.1,
     useMipmaps: 0,
+    overlayTexture: 0,
 };
 
 let gui = new GUI();
@@ -21,6 +23,7 @@ gui.add(settings, 'scale', 0, 1);
 gui.add(settings, 'samplingTransform', ['1', '2']);
 gui.add(settings, 'speed', 0, 1);
 gui.add(settings, 'useMipmaps', [0, 1]);
+gui.add(settings, 'overlayTexture', [0, 1]);
 
 let fnPanel = {
     smallMovingDemo: () => {
@@ -112,9 +115,9 @@ fnGui.add(fnPanel, 'smallMovingDemo');
         mappedAtCreation: false,
     });
 
-    let transformStorageData = new ArrayBuffer(16);
-    let transformStorage = device.createBuffer({
-        size: transformStorageData.byteLength,
+    let storageData = new ArrayBuffer(24);
+    let storageBuffer = device.createBuffer({
+        size: storageData.byteLength,
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         mappedAtCreation: false,
     });
@@ -138,6 +141,12 @@ fnGui.add(fnPanel, 'smallMovingDemo');
             format: 'rgba8unorm',
             usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
         });
+        let overlayTextureData = await createOverlayTexture();
+        let overlayTexture = device.createTexture({
+            size: [overlayTextureData.width, overlayTextureData.height],
+            format: 'rgba8unorm',
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+        });
 
         let sampler = device.createSampler({
             magFilter: settings.magFilter as GPUFilterMode,
@@ -151,7 +160,8 @@ fnGui.add(fnPanel, 'smallMovingDemo');
             entries: [
                 {binding: 0, resource: sampler},
                 {binding: 1, resource: texture},
-                {binding: 2, resource: transformStorage},
+                {binding: 2, resource: storageBuffer},
+                {binding: 3, resource: overlayTexture},
             ]
         });
 
@@ -185,9 +195,17 @@ fnGui.add(fnPanel, 'smallMovingDemo');
 
         let dx = Math.sin(t);
         let scale = settings.scale;
-        new Float32Array(transformStorageData, 0, 3).set([dx, 0.0, scale]);
-        new Uint32Array(transformStorageData, 12, 1).set([parseInt(settings.samplingTransform)]);
-        device.queue.writeBuffer(transformStorage, 0, transformStorageData);
+        new Float32Array(storageData, 0, 3).set([dx, 0.0, scale]);
+        new Uint32Array(storageData, 12, 1).set([parseInt(settings.samplingTransform)]);
+        new Uint32Array(storageData, 16, 1).set([settings.overlayTexture]);
+        device.queue.writeBuffer(storageBuffer, 0, storageData);
+        device.queue.writeTexture(
+            {texture: overlayTexture},
+            // @ts-ignore
+            overlayTextureData.data,
+            {bytesPerRow: overlayTextureData.width * 4},
+            {width: overlayTextureData.width, height: overlayTextureData.height},
+        )
 
         pass.setPipeline(pipeline);
         pass.setVertexBuffer(0, vertexBuffer);
@@ -234,11 +252,19 @@ function createTexture1(): TextureData {
     };
 }
 
-async function createTexture2(): Promise<TextureData> {
-    let imageData = await getImageRawData(img);
+async function createTextureFromImage(url: string) {
+    let imageData = await getImageRawData(url);
     return {
         width: imageData.width,
         height: imageData.height,
         data: imageData.data,
     }
+}
+
+async function createTexture2(): Promise<TextureData> {
+    return await createTextureFromImage(containerImg);
+}
+
+async function createOverlayTexture(): Promise<TextureData> {
+    return await createTextureFromImage(faceImg);
 }
