@@ -31,15 +31,12 @@ import shader from "./main.wgsl?raw";
         -0.5, -0.5, 0, 0, 1, 0,
         0.5, -0.5, 0, 0, 0, 1,
     ];
-    const VERTEX_DATA_RAW = new Float32Array(8 * 3);
-    VERTEX_DATA_RAW.set(VERTEX_DATA.slice(0, 3), 0);
-    VERTEX_DATA_RAW.set(VERTEX_DATA.slice(3, 6), 4);
-    VERTEX_DATA_RAW.set(VERTEX_DATA.slice(6, 9), 8);
-    VERTEX_DATA_RAW.set(VERTEX_DATA.slice(9, 12), 12);
-    VERTEX_DATA_RAW.set(VERTEX_DATA.slice(12, 15), 16);
-    VERTEX_DATA_RAW.set(VERTEX_DATA.slice(15, 18), 20);
+    const VERTEX_DATA_RAW_ROW_COMPACT = new Float32Array(8 * 3);
+    VERTEX_DATA_RAW_ROW_COMPACT.set(VERTEX_DATA.slice(0, 6), 0);
+    VERTEX_DATA_RAW_ROW_COMPACT.set(VERTEX_DATA.slice(6, 12), 8);
+    VERTEX_DATA_RAW_ROW_COMPACT.set(VERTEX_DATA.slice(12, 18), 16);
 
-    console.log(VERTEX_DATA_RAW);
+    console.log(VERTEX_DATA_RAW_ROW_COMPACT);
 
     let pipeline = device.createRenderPipeline({
         layout: 'auto',
@@ -56,7 +53,7 @@ import shader from "./main.wgsl?raw";
                         },
                         {
                             shaderLocation: 1,
-                            offset: 4 * 4,
+                            offset: 3 * 4,
                             format: "float32x3",
                         }
                     ]
@@ -73,11 +70,11 @@ import shader from "./main.wgsl?raw";
 
     function render() {
         let vertexBuffer = device.createBuffer({
-            size: VERTEX_DATA_RAW.byteLength,
+            size: VERTEX_DATA_RAW_ROW_COMPACT.byteLength,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
             mappedAtCreation: false,
         });
-        device.queue.writeBuffer(vertexBuffer, 0, VERTEX_DATA_RAW);
+        device.queue.writeBuffer(vertexBuffer, 0, VERTEX_DATA_RAW_ROW_COMPACT);
 
         let encoder = device.createCommandEncoder();
 
