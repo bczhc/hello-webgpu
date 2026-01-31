@@ -19,9 +19,10 @@ import shader from "./main.wgsl?raw";
     let workBuffer = device.createBuffer({
         size: workBufferData.byteLength,
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
-        mappedAtCreation: false,
+        mappedAtCreation: true,
     });
-    device.queue.writeBuffer(workBuffer, 0, workBufferData);
+    new Float32Array(workBuffer.getMappedRange()).set(input);
+    workBuffer.unmap();
 
     let resultBuffer = device.createBuffer({
         size: workBufferData.byteLength,
@@ -36,17 +37,21 @@ import shader from "./main.wgsl?raw";
         ]
     });
 
-    let encoder = device.createCommandEncoder();
-    let pass = encoder.beginComputePass({});
-    pass.setPipeline(pipeline);
-    pass.setBindGroup(0, bindGroup);
-    pass.dispatchWorkgroups(workBufferData.length);
-    pass.end();
+    function computeCommandBuffer() {
+        let encoder = device.createCommandEncoder();
+        let pass = encoder.beginComputePass({});
+        pass.setPipeline(pipeline);
+        pass.setBindGroup(0, bindGroup);
+        pass.dispatchWorkgroups(workBufferData.length);
+        pass.end();
 
-    encoder.copyBufferToBuffer(workBuffer, resultBuffer, workBufferData.byteLength);
-    let commandBuffer = encoder.finish();
+        encoder.copyBufferToBuffer(workBuffer, resultBuffer, workBufferData.byteLength);
+        return encoder.finish();
+    }
 
-    device.queue.submit([commandBuffer]);
+    let cb1 = computeCommandBuffer();
+    let cb2 = computeCommandBuffer();
+    device.queue.submit([cb1, cb2]);
 
     await resultBuffer.mapAsync(GPUMapMode.READ);
     let result = new Float32Array(resultBuffer.getMappedRange()).slice();
