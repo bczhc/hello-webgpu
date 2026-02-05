@@ -59,4 +59,6 @@ import shader from "./main.wgsl?raw";
 
     console.log('input', workBufferData);
     console.log('output', result);
+    document.querySelector('#span-input')!!.innerHTML = `Input: ${workBufferData.toString()}`
+    document.querySelector('#span-output')!!.innerHTML = `Output: ${result.toString()}`;
 })();

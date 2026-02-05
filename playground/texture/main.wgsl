@@ -10,14 +10,10 @@ struct VsOut {
     @location(0) tex_coord: vec2f,
 }
 
-@group(0) @binding(0)
-var samp: sampler;
-
-@group(0) @binding(1)
-var tex: texture_2d<f32>;
-
-@group(0) @binding(3)
-var overlay_tex: texture_2d<f32>;
+@group(0) @binding(0) var samp: sampler;
+@group(0) @binding(1) var tex: texture_2d<f32>;
+@group(0) @binding(2) var<storage, read> t_info: Params;
+@group(0) @binding(3) var overlay_tex: texture_2d<f32>;
 
 // size: 24
 struct Params {
@@ -27,9 +23,6 @@ struct Params {
     // offset: 16
     enable_overlay: u32,
 }
-
-@group(0) @binding(2)
-var<storage, read> t_info: Params;
 
 @vertex
 fn vs(@builtin(vertex_index) _index: u32, vertex: Vertex)
