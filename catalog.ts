@@ -16,4 +16,5 @@ export const demos = [
     'storage-texture-read-after-write-glitch',
     'storage-texture-write-in-compute-shader',
     'hello-triangle-msaa',
+    'bind-group-layout',
 ];

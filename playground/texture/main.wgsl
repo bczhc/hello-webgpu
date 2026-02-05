@@ -28,15 +28,18 @@ struct Params {
 fn vs(@builtin(vertex_index) _index: u32, vertex: Vertex)
  -> VsOut {
     let pos = vec4f(vertex.pos * t_info.scale + t_info.offset, 0.0, 1.0);
-    let samp_coord = select(vertex.pos, pos.xy, t_info.sampling_mode == 2);
-    return VsOut(pos, samp_coord);
+    return VsOut(pos, vertex.pos);
 }
 
 @fragment
 fn fs(in: VsOut) -> @location(0) vec4f {
-    let samp_coord = vec2f(
-        in.tex_coord.x / 2 + 0.5,
-        -in.tex_coord.y / 2+ 0.5
+    let samp_coord = select(
+        vec2f(
+            in.tex_coord.x / 2 + 0.5,
+            -in.tex_coord.y / 2+ 0.5
+        ),
+        vec2f(in.pos.x / CANVAS_WIDTH, in.pos.y / CANVAS_HEIGHT),
+        t_info.sampling_mode == 2
     );
     let tex1 = textureSample(tex, samp, samp_coord);
     let tex2 = textureSample(overlay_tex, samp, samp_coord);
