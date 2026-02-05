@@ -64,7 +64,7 @@ import shader from "./main.wgsl?raw";
         let pass = encoder.beginComputePass();
         pass.setPipeline(computePipeline);
         pass.setBindGroup(0, computeBindGroup);
-        pass.dispatchWorkgroups(4);
+        pass.dispatchWorkgroups(1);
         pass.end()
     }
 
