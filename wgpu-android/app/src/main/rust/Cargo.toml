@@ -5,6 +5,16 @@ edition = "2024"
 
 [dependencies]
 jni = "0.21.1"
+wgpu = { version = "28.0.0", features = ["vulkan"] }
+winit = { version = "0.30.12", features = ["android-native-activity"] }
+ndk-sys = "0.6.0+11769913"
+bytemuck = "1.25.0"
+rand = "0.10.0"
+anyhow = "1.0.101"
+oneshot = "0.1.13"
+log = "0.4.29"
+android_logger = "0.15.1"
+pollster = "0.4.0"
 
 [lib]
 crate-type = ["cdylib"]
