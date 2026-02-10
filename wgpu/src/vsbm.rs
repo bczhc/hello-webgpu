@@ -183,10 +183,10 @@ impl State {
             -ang1.sin() * ang2.cos(),
         ];
 
-        let cx = self.size.0 as f32;
-        let cy = self.size.1 as f32;
-        let sx = (cx.min(cy) / cx) * (cx / cx.max(cy));
-        let sy = (cy.min(cx) / cy) * (cy / cx.max(cy));
+        // let cx = self.size.0 as f32;
+        // let cy = self.size.1 as f32;
+        // let sx = (cx.min(cy) / cx) * (cx / cx.max(cy));
+        // let sy = (cy.min(cx) / cy) * (cy / cx.max(cy));
 
         // 因为使用了 1:1 的 Viewport，这里 screen_size 直接给 1.0 即可
         let uniforms = Uniforms {
@@ -249,13 +249,13 @@ impl State {
             });
 
             // --- 核心逻辑：设置居中的 1:1 正方形视口 ---
-            let win_w = self.size.0 as f32;
-            let win_h = self.size.1 as f32;
-            let side = win_w.min(win_h); // 取短边
-            let x_offset = (win_w - side) / 2.0;
-            let y_offset = (win_h - side) / 2.0;
-
-            render_pass.set_viewport(x_offset, y_offset, side, side, 0.0, 1.0);
+            // let win_w = self.size.0 as f32;
+            // let win_h = self.size.1 as f32;
+            // let side = win_w.min(win_h); // 取短边
+            // let x_offset = (win_w - side) / 2.0;
+            // let y_offset = (win_h - side) / 2.0;
+            //
+            // render_pass.set_viewport(x_offset, y_offset, side, side, 0.0, 1.0);
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);

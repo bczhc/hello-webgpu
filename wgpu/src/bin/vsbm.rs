@@ -1,9 +1,15 @@
 #![feature(try_blocks)]
 
+//! https://cznull.github.io/vsbm wgpu port
+//!
+//! At 1024x1024 surface dimension, DX12 on Windows 10 has ~5 fps higher than
+//! Vulkan on Windows 10 & Vulkan on Linux. Test hardware: NVIDIA GeForce RTX 3060 Mobile / Max-Q.
+
+use chrono::Local;
 use std::env;
 use std::sync::Arc;
 use wgpu_playground::vsbm::State;
-use wgpu_playground::{wgpu_instance_with_env_backend, FpsCounter, WgpuStateInitInfo};
+use wgpu_playground::{wgpu_instance_with_env_backend, WgpuStateInitInfo};
 use winit::application::ApplicationHandler;
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
@@ -15,7 +21,7 @@ use winit::{
 struct App {
     state: Option<State>,
     window: Option<Arc<Window>>,
-    fps_counter: Option<FpsCounter>,
+    last_frame_time: u64,
 }
 
 impl ApplicationHandler for App {
@@ -29,12 +35,13 @@ impl ApplicationHandler for App {
 
         pollster::block_on(async {
             let result: anyhow::Result<()> = try {
-                let size = window.inner_size();
+                // let size = window.inner_size();
+                let size = (1024, 1024);
                 let instance = wgpu_instance_with_env_backend();
                 let surface = instance.create_surface(Arc::clone(&window))?;
                 let state = State::new(WgpuStateInitInfo {
                     instance,
-                    size: size.into(),
+                    size,
                     surface,
                 })
                 .await;
@@ -57,7 +64,7 @@ impl ApplicationHandler for App {
         let state = self.state.as_mut().unwrap();
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Resized(physical_size) => state.resize(physical_size.into()),
+            WindowEvent::Resized(physical_size) => state.resize((1024, 1024)),
             WindowEvent::RedrawRequested => {
                 let Some(w) = &self.window else {
                     return;
@@ -71,17 +78,12 @@ impl ApplicationHandler for App {
                     Err(e) => eprintln!("{:?}", e),
                 }
 
-                // calculate the FPS
-                if let Some(f) = &mut self.fps_counter {
-                    let (d, fps) = f.hint_and_get();
-                    if d.as_secs_f64() > 1.0 {
-                        println!("FPS: {}", fps);
-                        self.fps_counter = Some(FpsCounter::new());
-                    }
-                } else {
-                    self.fps_counter = Some(FpsCounter::new());
-                }
-                
+                // print the FPS
+                let ts = Local::now().timestamp_nanos_opt().unwrap() as u64;
+                let fps = 1_000_000_000.0 / (ts - self.last_frame_time) as f64;
+                println!("FPS: {:.2}", fps.floor());
+                self.last_frame_time = ts;
+
                 w.request_redraw();
             }
             _ => {}
