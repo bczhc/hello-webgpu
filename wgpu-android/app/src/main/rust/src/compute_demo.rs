@@ -120,3 +120,21 @@ pub async fn compute() -> anyhow::Result<[u32; 3]> {
     state.read_result(cast_slice_mut(&mut result)).await?;
     Ok(result)
 }
+
+pub mod jni_exports {
+    use jni::JNIEnv;
+    use jni::objects::JClass;
+    use jni::sys::jstring;
+    use crate::compute_demo;
+
+    #[unsafe(no_mangle)]
+    #[allow(non_snake_case)]
+    pub extern "system" fn Java_pers_zhc_android_myapplication_JNI_simpleCompute(
+        env: JNIEnv,
+        _c: JClass,
+    ) -> jstring {
+        let result = compute_demo::compute();
+        let result = pollster::block_on(result).unwrap();
+        env.new_string(format!("{:?}", result)).unwrap().into_raw()
+    }
+}

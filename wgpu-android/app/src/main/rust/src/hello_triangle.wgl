@@ -1,18 +1,40 @@
-const COLOR = vec4f(1,0,0,1);
+struct VertexInput {
+    @location(0) position: vec2f,
+    @location(1) color: vec3f,
+}
+
+struct Uniform {
+    elapsed: f32,
+}
+
+struct VertexOutput {
+    @builtin(position) clip_position: vec4f,
+    @location(0) color: vec3f,
+}
+
+@group(0) @binding(0) var<uniform> myUniform: Uniform;
 
 @vertex
-fn vs(@builtin(vertex_index) index: u32)
--> @builtin(position) vec4f {
-    let pos = array(
-        vec2f(0.0, 0.5),
-        vec2f(-0.5, -0.5),
-        vec2f(0.5, -0.5),
+fn vs_main(in: VertexInput) -> VertexOutput {
+    var out: VertexOutput;
+
+    let r = myUniform.elapsed * 2.0 * 3.1415926536;
+    let cos_a = cos(r);
+    let sin_a = sin(r);
+
+    // 旋转位置
+    let rotated_position = vec2f(
+        in.position.x * cos_a - in.position.y * sin_a,
+        in.position.x * sin_a + in.position.y * cos_a
     );
 
-    return vec4f(pos[index], 0.0, 1.0);
+    out.clip_position = vec4f(rotated_position, 0.0, 1.0);
+    out.color = in.color;
+
+    return out;
 }
 
 @fragment
-fn fs() -> @location(0) vec4f {
-    return COLOR;
+fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+    return vec4f(in.color, 1.0);
 }

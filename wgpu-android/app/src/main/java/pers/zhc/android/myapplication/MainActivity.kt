@@ -26,14 +26,12 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         bindings.sha256MinerBtn.setOnClickListener {
             startActivity(Intent(this, Sha256MinerActivity::class.java))
         }
-        bindings.btnUpdateSurface.setOnClickListener {
-            JNI.update()
-        }
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
         val surface = holder.surface
         JNI.initWgpu(surface)
+        JNI.startAnimationThread(0.005F)
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
