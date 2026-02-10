@@ -2,9 +2,11 @@
 #![feature(try_blocks)]
 
 mod compute_demo;
-mod hello_triangle;
-mod sha256_miner;
+pub mod animation;
+pub mod sha256_miner;
+pub mod animator;
 
+use backtrace::Backtrace;
 use jni::objects::{JClass, JObject};
 use jni::sys::{jint, jstring};
 use jni::JNIEnv;
@@ -16,6 +18,7 @@ use raw_window_handle::{
 };
 use std::ptr::NonNull;
 use std::sync::Mutex;
+use std::{env, panic};
 use wgpu::{Instance, SurfaceTarget};
 
 pub macro default() {
@@ -34,11 +37,12 @@ pub extern "system" fn Java_pers_zhc_android_myapplication_JNI_initLogger(
             .with_max_level(LevelFilter::Info),
     );
     info!("Android logger initialized.");
+    set_up_panic_hook();
 }
 
 pub struct AndroidWindow {
     native_window: *mut ndk_sys::ANativeWindow,
-    size: (u32 ,u32),
+    size: (u32, u32),
 }
 
 impl HasWindowHandle for AndroidWindow {
@@ -62,3 +66,14 @@ impl HasDisplayHandle for AndroidWindow {
 
 unsafe impl Send for AndroidWindow {}
 unsafe impl Sync for AndroidWindow {}
+
+fn set_up_panic_hook() {
+    unsafe {
+        env::set_var("RUST_BACKTRACE", "1");
+    }
+    panic::set_hook(Box::new(|i| {
+        let backtrace = Backtrace::new();
+        let backtrace = format!("{:?}", backtrace);
+        error!("Rust panic!!\n{}\nBacktrace:\n{}", i, backtrace);
+    }));
+}

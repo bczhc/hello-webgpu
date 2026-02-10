@@ -21,6 +21,7 @@ hex = "0.4.3"
 raw-window-handle = "0.6.2"
 once_cell = "1.21.3"
 wgpu-playground = { path = "../../../../../wgpu" }
+backtrace = "0.3.76"
 
 [lib]
 crate-type = ["cdylib"]

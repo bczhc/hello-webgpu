@@ -138,7 +138,7 @@ impl State {
             cache: None,
         });
 
-        Self {
+        let state = Self {
             surface,
             device,
             queue,
@@ -148,7 +148,9 @@ impl State {
             uniform_bind_group,
             start_time: Instant::now(),
             texture_format,
-        }
+        };
+        state.configure_surface();
+        state
     }
 
     pub fn resize(&mut self, new_size: (u32, u32)) {

@@ -10,10 +10,16 @@ object JNI {
     }
 
     private external fun initLogger()
-    external fun initWgpu(surface: Surface)
-    external fun resize(width: Int, height: Int)
-    external fun cleanup()
-    external fun startAnimationThread(increment: Float)
+    external fun initWgpu(surface: Surface, animationId: Int): Long
+    external fun resize(addr: Long, width: Int, height: Int)
+    external fun cleanup(addr: Long)
+    external fun frame(addr: Long)
+    external fun changeAnimation(addr: Long, animationId: Int): Long
+
+    enum class Animations(val id: Int) {
+        ROTATING_TRIANGLE(0),
+        VSBM(1),
+    }
 
     external fun simpleCompute(): String
 
