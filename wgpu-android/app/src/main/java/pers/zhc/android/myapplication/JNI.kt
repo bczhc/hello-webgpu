@@ -9,7 +9,7 @@ object JNI {
         initLogger()
     }
 
-    external fun initLogger()
+    private external fun initLogger()
     external fun initWgpu(surface: Surface)
     external fun resize(width: Int, height: Int)
     external fun cleanup()

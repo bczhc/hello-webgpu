@@ -213,9 +213,8 @@ impl State {
         // End the renderpass.
         drop(pass);
 
-        // Submit the command in the queue to execute
-        self.queue.submit([encoder.finish()]);
         self.window.pre_present_notify();
+        self.queue.submit([encoder.finish()]);
         surface_texture.present();
     }
 }

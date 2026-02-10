@@ -36,6 +36,7 @@ class Sha256MinerActivity : AppCompatActivity() {
                         override fun print(line: String) {
                             runOnUiThread {
                                 appendLog(line)
+                                appendLog("")
                             }
                         }
                     }
