@@ -11,7 +11,9 @@ pub mod jni_exports {
     use std::thread::spawn;
     use std::time::Instant;
     use wgpu::Instance;
-    use wgpu_playground::triangle_rotation::State;
+    use wgpu_playground::WgpuStateInitInfo;
+
+    type State = wgpu_playground::vsbm::State;
 
     static STATE: Lazy<Mutex<Option<State>>> = Lazy::new(|| default!());
 
@@ -46,7 +48,12 @@ pub mod jni_exports {
                     let instance = Instance::default();
                     let size = android_window.size;
                     let surface = instance.create_surface(android_window)?;
-                    let state = State::new(instance, surface, size).await;
+                    let state = State::new(WgpuStateInitInfo {
+                        instance,
+                        surface,
+                        size,
+                    })
+                    .await;
                     *STATE.lock().unwrap() = Some(state);
                 };
                 if let Err(e) = result {
@@ -102,14 +109,15 @@ pub mod jni_exports {
         spawn(move || {
             let mut elapsed = 0_f32;
             loop {
-                let guard = STATE.lock().unwrap();
-                let Some(state) = guard.as_ref() else {
+                let mut guard = STATE.lock().unwrap();
+                let Some(state) = guard.as_mut() else {
                     break;
                 };
 
                 elapsed += increment;
-                state.update_elapsed(elapsed);
-                state.render(|| {});
+                state.update();
+                // state.update_elapsed(elapsed);
+                state.render(|| {}).unwrap();
             }
         });
     }

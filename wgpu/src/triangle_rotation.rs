@@ -1,12 +1,11 @@
-use std::time::Instant;
+use crate::{ColorExt, WgpuStateInitInfo};
 use bytemuck::checked::cast_slice;
 use wgpu::{
     include_wgsl, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferDescriptor,
-    BufferUsages, Color, ColorTargetState, Device, FragmentState, Instance, Queue,
-    RenderPipeline, RenderPipelineDescriptor, Surface, VertexAttribute, VertexBufferLayout,
+    BufferUsages, Color, ColorTargetState, Device, FragmentState, Queue,
+    RenderPipeline, RenderPipelineDescriptor, VertexAttribute, VertexBufferLayout,
     VertexFormat, VertexState,
 };
-use crate::ColorExt;
 
 pub struct State {
     device: wgpu::Device,
@@ -38,7 +37,9 @@ static VERTICES_DATA: [f32; 15] = {
 };
 
 impl State {
-    pub async fn new(instance: Instance, surface: Surface<'static>, size: (u32, u32)) -> State {
+    pub async fn new(info: WgpuStateInitInfo) -> State {
+        let instance = info.instance;
+        let surface = info.surface;
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions::default())
             .await
@@ -112,7 +113,7 @@ impl State {
             uniform_buffer: buffer,
             device,
             queue,
-            size,
+            size: info.size,
             surface,
             surface_format,
             pipeline,
@@ -137,7 +138,8 @@ impl State {
     }
 
     pub fn update_elapsed(&self, value: f32) {
-        self.queue.write_buffer(&self.uniform_buffer, 0, cast_slice(&[value]));
+        self.queue
+            .write_buffer(&self.uniform_buffer, 0, cast_slice(&[value]));
     }
 
     pub fn configure_surface(&self) {

@@ -2,7 +2,7 @@ use std::env;
 use std::sync::Arc;
 use std::time::Instant;
 use wgpu_playground::triangle_rotation::State;
-use wgpu_playground::wgpu_instance_with_env_backend;
+use wgpu_playground::{wgpu_instance_with_env_backend, WgpuStateInitInfo};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -38,7 +38,12 @@ impl ApplicationHandler for App {
         let size = window.inner_size();
 
         pollster::block_on(async {
-            let state = State::new(wgpu_instance, surface, (size.width, size.height)).await;
+            let state = State::new(WgpuStateInitInfo {
+                instance: wgpu_instance,
+                surface,
+                size: size.into(),
+            })
+            .await;
             self.state = Some(state);
         });
 
