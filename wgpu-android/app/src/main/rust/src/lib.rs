@@ -2,11 +2,16 @@
 #![feature(try_blocks)]
 
 mod compute_demo;
+mod sha256_miner;
 
 use jni::objects::{JClass, JObject};
-use jni::sys::jint;
+use jni::sys::{jint, jstring};
 use jni::JNIEnv;
 use log::{debug, info, LevelFilter};
+
+pub macro default() {
+    Default::default()
+}
 
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -30,10 +35,6 @@ pub extern "system" fn Java_pers_zhc_android_myapplication_JNI_initWgpu(
     surface: JObject,
 ) {
     debug!("initWgpu called");
-
-    let result = compute_demo::compute();
-    let result = pollster::block_on(result).unwrap();
-    info!("wgpu result: {:?}", result);
 }
 
 #[unsafe(no_mangle)]
@@ -51,4 +52,15 @@ pub extern "system" fn Java_pers_zhc_android_myapplication_JNI_resize(
 #[allow(non_snake_case)]
 pub extern "system" fn Java_pers_zhc_android_myapplication_JNI_cleanup(env: JNIEnv, _c: JClass) {
     debug!("cleanup called");
+}
+
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "system" fn Java_pers_zhc_android_myapplication_JNI_simpleCompute(
+    env: JNIEnv,
+    _c: JClass,
+) -> jstring {
+    let result = compute_demo::compute();
+    let result = pollster::block_on(result).unwrap();
+    env.new_string(format!("{:?}", result)).unwrap().into_raw()
 }

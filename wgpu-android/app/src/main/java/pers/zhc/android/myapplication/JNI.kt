@@ -13,4 +13,18 @@ object JNI {
     external fun initWgpu(surface: Surface)
     external fun resize(width: Int, height: Int)
     external fun cleanup()
+
+    external fun simpleCompute(): String
+
+    external fun sha256Demo(
+        workgroupSize: Int,
+        dispatchX: Int,
+        iterations: Int,
+        difficulty: Int,
+        logCallback: LogCallback,
+    )
+
+    abstract class LogCallback {
+        abstract fun print(line: String)
+    }
 }

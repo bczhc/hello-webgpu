@@ -6,10 +6,7 @@ use wgpu::{
     BufferBinding, BufferDescriptor, BufferUsages, ComputePipeline, ComputePipelineDescriptor, Device,
     Instance, MapMode, PipelineCompilationOptions, Queue,
 };
-
-macro default() {
-    Default::default()
-}
+use crate::default;
 
 const WORKGROUP_SIZE: usize = 1;
 

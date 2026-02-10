@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fitsSystemWindows="false"
+    android:fitsSystemWindows="true"
     android:orientation="vertical">
 
     <SurfaceView
@@ -15,11 +15,18 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:padding="5sp"
+        android:orientation="vertical"
         android:layout_weight="1">
 
         <TextView
             android:id="@+id/logTv"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+            android:layout_height="wrap_content" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/sha256MinerBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Sha256Miner" />
     </LinearLayout>
 </LinearLayout>
