@@ -5,7 +5,6 @@ mod compute_demo;
 mod hello_triangle;
 mod sha256_miner;
 
-use crate::hello_triangle::State;
 use jni::objects::{JClass, JObject};
 use jni::sys::{jint, jstring};
 use jni::JNIEnv;
@@ -39,8 +38,7 @@ pub extern "system" fn Java_pers_zhc_android_myapplication_JNI_initLogger(
 
 pub struct AndroidWindow {
     native_window: *mut ndk_sys::ANativeWindow,
-    width: u32,
-    height: u32,
+    size: (u32 ,u32),
 }
 
 impl HasWindowHandle for AndroidWindow {

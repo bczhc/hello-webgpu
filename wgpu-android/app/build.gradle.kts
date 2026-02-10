@@ -96,7 +96,16 @@ configure<RustBuildPluginExtension> {
     targets.set(GradleExtensionConfigConverters.targetsToMap(parsed.ndk.targets))
     buildType.set(parsed.ndk.buildType.name)
     outputDir.set(File(appProject.projectDir, "jniLibs").also { it.mkdirs() }.path)
+    extraEnv.set(
+        mapOf(
+            Pair(
+                "CC_aarch64-linux-android",
+                File(localConfig.ndkDir, "toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang").path
+            )
+        )
+    )
 }
+
 
 val compileRustTask = project.tasks.getByName("compileRust")
 val compileJniTask = task("compileJni") {
