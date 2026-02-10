@@ -28,7 +28,7 @@ pub struct State {
     render_pipeline: wgpu::RenderPipeline,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
-    start_time: Instant,
+    elapsed: f32,
     texture_format: wgpu::TextureFormat,
 }
 
@@ -146,7 +146,7 @@ impl State {
             render_pipeline,
             uniform_buffer,
             uniform_bind_group,
-            start_time: Instant::now(),
+            elapsed: 0f32,
             texture_format,
         };
         state.configure_surface();
@@ -161,8 +161,8 @@ impl State {
     }
 
     pub fn update(&mut self) {
-        let elapsed = self.start_time.elapsed().as_secs_f32();
-        let ang1 = 2.8 + elapsed * 0.5; // 自动旋转
+        self.elapsed += 0.012;
+        let ang1 = 2.8 + self.elapsed * 0.5; // 自动旋转
         let ang2: f32 = 0.4;
         let len = 1.6;
 

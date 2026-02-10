@@ -8,7 +8,7 @@ pub mod jni_exports {
     use jni::JNIEnv;
     use log::{debug, error, info, trace};
     use std::sync::{Arc, Mutex};
-    use wgpu::Instance;
+    use wgpu::{BackendOptions, Backends, Instance, InstanceDescriptor};
     use wgpu_playground::WgpuStateInitInfo;
 
     struct Wrapper {
@@ -17,7 +17,10 @@ pub mod jni_exports {
     }
 
     fn create_init_info_from_window(android_window: Arc<AndroidWindow>) -> WgpuStateInitInfo {
-        let instance = Instance::default();
+        let instance = Instance::new(&InstanceDescriptor {
+            backends: Backends::VULKAN,
+            ..default!()
+        });
         let size = android_window.size;
         let surface = instance
             .create_surface(Arc::clone(&android_window))
@@ -46,6 +49,9 @@ pub mod jni_exports {
                 ndk_sys::ANativeWindow_fromSurface(env.get_native_interface(), surface.as_raw());
             let width = ndk_sys::ANativeWindow_getWidth(window_ptr);
             let height = ndk_sys::ANativeWindow_getHeight(window_ptr);
+            // let size = (width as u32, height as u32);
+            let size = (1024, 1024);
+            info!("Surface size: {:?}", size);
 
             if window_ptr.is_null() {
                 error!("window_ptr is null");
@@ -54,7 +60,7 @@ pub mod jni_exports {
 
             let android_window = AndroidWindow {
                 native_window: window_ptr,
-                size: (width as _, height as _),
+                size,
             };
             let android_window = Arc::new(android_window);
 
@@ -83,9 +89,7 @@ pub mod jni_exports {
         init_info: WgpuStateInitInfo,
     ) -> anyhow::Result<Box<dyn Animate>> {
         let animator: Box<dyn Animate> = match animation_id {
-            0 => {
-                Box::new(RotatingTriangleAnimator::new(init_info)?)
-            }
+            0 => Box::new(RotatingTriangleAnimator::new(init_info)?),
             1 => Box::new(VsbmAnimator::new(init_info)?),
             _ => {
                 error!("Unknown animation id");
@@ -106,7 +110,7 @@ pub mod jni_exports {
     ) {
         info!("resize called");
         let wrapper = unsafe { &mut *(addr as *mut Wrapper) };
-        wrapper.animator.resize((width as _, height as _)).unwrap();
+        // wrapper.animator.resize((width as _, height as _)).unwrap();
     }
 
     #[unsafe(no_mangle)]
@@ -136,7 +140,7 @@ pub mod jni_exports {
         _c: JClass,
         addr: jlong,
     ) {
-        info!("update called");
+        trace!("update called");
         let wrapper = unsafe { &mut *(addr as *mut Wrapper) };
         wrapper.animator.frame().unwrap();
     }
