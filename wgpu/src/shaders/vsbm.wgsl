@@ -129,6 +129,5 @@ fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
         color = (sin(vec3f(r_sq * 10.0, r_sq * 10.0 + 2.05, r_sq * 10.0 - 2.05)) * 0.5 + 0.5) * shade;
     }
 
-    // return vec4f(color, 1.0);
-    return vec4f(pow(color, vec3f(2.2)), 1.0);
+    return vec4f(color, 1.0);
 }

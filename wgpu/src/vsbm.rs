@@ -1,7 +1,7 @@
 use crate::{default, WgpuStateInitInfo};
 use bytemuck::{Pod, Zeroable};
 use std::iter;
-use wgpu::PipelineCompilationOptions;
+use wgpu::{PipelineCompilationOptions, TextureFormat};
 
 // --- Uniform 数据结构 (必须符合 WGSL 的 16 字节对齐) ---
 #[repr(C)]
@@ -49,8 +49,7 @@ impl State {
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: self.texture_format,
-            // Request compatibility with the sRGB-format texture view we‘re going to create later.
-            view_formats: vec![self.texture_format.add_srgb_suffix()],
+            view_formats: vec![self.texture_format],
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             width: self.size.0,
             height: self.size.1,
@@ -71,7 +70,13 @@ impl State {
             .unwrap();
 
         let surface_caps = surface.get_capabilities(&adapter);
-        let texture_format = surface_caps.formats[0];
+        
+        // Do not use srgb suffix. This makes wgpu think all colors we give are already in a
+        // non-linear sRGB space and do not do an automatic gamma correction.
+        let mut texture_format = TextureFormat::Bgra8Unorm;
+        if !surface_caps.formats.iter().any(|x| x == &texture_format) {
+            texture_format = surface_caps.formats[0].remove_srgb_suffix();
+        }
 
         // --- 核心 WGSL 着色器 ---
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -221,9 +226,7 @@ impl State {
         let texture_view = surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor {
-                // Without add_srgb_suffix() the image we will be working with
-                // might not be "gamma correct".
-                format: Some(self.texture_format.add_srgb_suffix()),
+                format: Some(self.texture_format),
                 ..Default::default()
             });
 
