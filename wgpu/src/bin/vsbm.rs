@@ -6,10 +6,11 @@
 //! Vulkan on Windows 10 & Vulkan on Linux. Test hardware: NVIDIA GeForce RTX 3060 Mobile / Max-Q.
 
 use chrono::Local;
+use clap::Parser;
 use std::env;
 use std::sync::Arc;
-use wgpu_playground::vsbm::State;
-use wgpu_playground::{wgpu_instance_with_env_backend, WgpuStateInitInfo};
+use wgpu_playground::vsbm::{Config, State};
+use wgpu_playground::{default, wgpu_instance_with_env_backend, WgpuStateInitInfo};
 use winit::application::ApplicationHandler;
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
@@ -17,11 +18,19 @@ use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
 };
+
+#[derive(Debug, Parser)]
+struct Args {
+    #[arg(short = 'i', long, default_value = "5")]
+    kernel_iterations: u32,
+}
+
 #[derive(Default)]
 struct App {
-    state: Option<State>,
-    window: Option<Arc<Window>>,
-    last_frame_time: u64,
+    pub state: Option<State>,
+    pub window: Option<Arc<Window>>,
+    pub last_frame_time: u64,
+    pub animation_config: Config,
 }
 
 impl ApplicationHandler for App {
@@ -39,11 +48,16 @@ impl ApplicationHandler for App {
                 let size = (1024, 1024);
                 let instance = wgpu_instance_with_env_backend();
                 let surface = instance.create_surface(Arc::clone(&window))?;
-                let state = State::new(WgpuStateInitInfo {
-                    instance,
-                    size,
-                    surface,
-                })
+                let state = State::new(
+                    WgpuStateInitInfo {
+                        instance,
+                        size,
+                        surface,
+                    },
+                    Config {
+                        kernel_iterations: self.animation_config.kernel_iterations,
+                    },
+                )
                 .await;
                 self.state = Some(state);
             };
@@ -92,6 +106,8 @@ impl ApplicationHandler for App {
 }
 
 pub fn main() {
+    let args = Args::parse();
+
     unsafe {
         env::set_var("RUST_LOG", "info");
     }
@@ -101,6 +117,11 @@ pub fn main() {
 
     event_loop.set_control_flow(ControlFlow::Poll);
 
-    let mut app = App::default();
+    let mut app = App {
+        animation_config: Config {
+            kernel_iterations: args.kernel_iterations,
+        },
+        ..default!()
+    };
     event_loop.run_app(&mut app).unwrap();
 }

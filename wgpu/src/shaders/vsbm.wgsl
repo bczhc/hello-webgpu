@@ -1,3 +1,5 @@
+override KERNEL_ITERATIONS: i32 = 0;
+
 struct Uniforms {
     origin: vec3f,
     _p1: f32,
@@ -34,7 +36,7 @@ fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {
 fn kernel(ver: vec3f) -> f32 {
     var a = ver;
     var b: f32; var c: f32; var d: f32;
-    for(var i: i32 = 0; i < 5; i++) {
+    for(var i: i32 = 0; i < KERNEL_ITERATIONS; i++) {
         b = length(a);
         c = atan2(a.y, a.x) * 8.0;
         d = acos(a.z / b) * 8.0;

@@ -43,7 +43,9 @@ pub struct VsbmAnimator {
 impl Animate for VsbmAnimator {
     fn new(init_info: WgpuStateInitInfo) -> anyhow::Result<Self> {
         Ok(Self {
-            state: pollster::block_on(vsbm::State::new(init_info)),
+            state: pollster::block_on(vsbm::State::new(init_info, vsbm::Config {
+                kernel_iterations: 2,
+            })),
         })
     }
 

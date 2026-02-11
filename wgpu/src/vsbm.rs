@@ -1,7 +1,7 @@
-use crate::WgpuStateInitInfo;
+use crate::{default, WgpuStateInitInfo};
 use bytemuck::{Pod, Zeroable};
 use std::iter;
-use std::time::{Duration, Instant};
+use wgpu::PipelineCompilationOptions;
 
 // --- Uniform 数据结构 (必须符合 WGSL 的 16 字节对齐) ---
 #[repr(C)]
@@ -32,6 +32,18 @@ pub struct State {
     texture_format: wgpu::TextureFormat,
 }
 
+pub struct Config {
+    pub kernel_iterations: u32,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            kernel_iterations: 5,
+        }
+    }
+}
+
 impl State {
     pub fn configure_surface(&self) {
         let surface_config = wgpu::SurfaceConfiguration {
@@ -48,17 +60,10 @@ impl State {
         self.surface.configure(&self.device, &surface_config);
     }
 
-    pub async fn new(info: WgpuStateInitInfo) -> Self {
+    pub async fn new(info: WgpuStateInitInfo, config: Config) -> Self {
         let instance = info.instance;
         let surface = info.surface;
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
-            .await
-            .unwrap();
+        let adapter = instance.request_adapter(&default!()).await.unwrap();
 
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor::default())
@@ -124,7 +129,10 @@ impl State {
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
+                compilation_options: PipelineCompilationOptions {
+                    zero_initialize_workgroup_memory: default!(),
+                    constants: &[("KERNEL_ITERATIONS", config.kernel_iterations as f64)],
+                },
                 targets: &[Some(wgpu::ColorTargetState {
                     format: texture_format,
                     blend: None,
@@ -234,9 +242,9 @@ impl State {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.07,
-                            g: 0.06,
-                            b: 0.08,
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
                             a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
