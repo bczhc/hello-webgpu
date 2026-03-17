@@ -1,17 +1,31 @@
-use std::path::Path;
-use std::sync::Arc;
 use bytemuck::{bytes_of, cast_slice_mut};
+use clap::Parser;
 use image::GenericImageView;
-use wgpu::{include_wgsl, BindGroupDescriptor, BindGroupEntry, BufferDescriptor, BufferUsages, Color, ColorTargetState, Device, FragmentState, Instance, LoadOp, LoadOpDontCare, Operations, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, StoreOp, Surface, SurfaceConfiguration, TextureUsages, TextureViewDescriptor, TextureViewDimension, VertexState};
-use wgpu_playground::{default, wgpu_instance_with_env_backend, ColorExt};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use log::info;
+use wgpu::{
+    include_wgsl, BindGroupDescriptor, BindGroupEntry, BufferDescriptor, BufferUsages,
+    ColorTargetState, Device, FragmentState, Instance, LoadOp, LoadOpDontCare, Operations,
+    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, StoreOp,
+    Surface, SurfaceConfiguration, TextureUsages, TextureViewDescriptor, TextureViewDimension,
+    VertexState,
+};
+use wgpu_playground::{default, set_up_logger, wgpu_instance_with_env_backend};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::keyboard::{Key, NamedKey, SmolStr};
 use winit::window::{Window, WindowId};
 
 struct App {
     state: Option<State>,
     window: Option<Arc<Window>>,
+    config: Config,
+}
+
+struct Config {
+    image_path: PathBuf,
 }
 
 impl ApplicationHandler for App {
@@ -23,7 +37,13 @@ impl ApplicationHandler for App {
         let surface = instance.create_surface(window.clone()).unwrap();
         let window_size = window.inner_size();
 
-        let state = State::new(instance, surface, (window_size.width, window_size.height)).unwrap();
+        let state = State::new(
+            instance,
+            surface,
+            (window_size.width, window_size.height),
+            &self.config.image_path,
+        )
+        .unwrap();
         self.state = Some(state);
         self.window = Some(Arc::clone(&window));
 
@@ -33,7 +53,7 @@ impl ApplicationHandler for App {
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        window_id: WindowId,
+        _window_id: WindowId,
         event: WindowEvent,
     ) {
         let Some(state) = &mut self.state else {
@@ -48,12 +68,19 @@ impl ApplicationHandler for App {
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
-                state.render(|| {
-                    window.pre_present_notify();
-                }).unwrap();
+                state
+                    .render(|| {
+                        window.pre_present_notify();
+                    })
+                    .unwrap();
             }
             WindowEvent::Resized(size) => {
                 state.resize((size.width as _, size.height as _));
+            }
+            WindowEvent::KeyboardInput {event, ..} => {
+                if event.logical_key == Key::Character("q".into()) {
+                    event_loop.exit();
+                }
             }
             _ => {}
         }
@@ -61,7 +88,7 @@ impl ApplicationHandler for App {
 }
 
 fn open_image(path: impl AsRef<Path>) -> anyhow::Result<(u32, u32, Vec<u8>)> {
-    let img=image::open(path)?;
+    let img = image::open(path)?;
     let width = img.width();
     let height = img.height();
 
@@ -75,13 +102,26 @@ fn open_image(path: impl AsRef<Path>) -> anyhow::Result<(u32, u32, Vec<u8>)> {
     Ok((width, height, rgb888_buf))
 }
 
+#[derive(Parser)]
+struct Args {
+    /// Path of image
+    path: PathBuf,
+}
+
 fn main() -> anyhow::Result<()> {
+    set_up_logger();
+
+    let args = Args::parse();
+
     let el = EventLoop::new()?;
     el.set_control_flow(ControlFlow::Wait);
 
     let mut app = App {
         state: None,
         window: None,
+        config: Config {
+            image_path: args.path,
+        },
     };
     el.run_app(&mut app)?;
     Ok(())
@@ -94,7 +134,6 @@ struct State {
     surface_format: wgpu::TextureFormat,
     surface: Surface<'static>,
     size: (u32, u32),
-    buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
 }
 
@@ -103,7 +142,10 @@ impl State {
         instance: Instance,
         surface: Surface<'static>,
         init_size: (u32, u32),
+        image_path: impl AsRef<Path>,
     ) -> anyhow::Result<Self> {
+        let (image_width, image_height, image_buf) = open_image(image_path)?;
+
         let adapter = pollster::block_on(instance.request_adapter(&default!()))?;
         let (device, queue) = pollster::block_on(adapter.request_device(&default!()))?;
 
@@ -129,20 +171,15 @@ impl State {
                 module: &module,
                 entry_point: None,
                 compilation_options: Default::default(),
-                targets: &[
-                    Some(ColorTargetState {
-                        format: surface_format,
-                        blend: None,
-                        write_mask: Default::default(),
-                    })
-                ],
+                targets: &[Some(ColorTargetState {
+                    format: surface_format,
+                    blend: None,
+                    write_mask: Default::default(),
+                })],
             }),
             multiview_mask: None,
             cache: None,
         });
-
-        let image_path = "/home/bczhc/.local/share/Steam/userdata/1680739791/760/remote/1623730/screenshots/20260119202345_1.jpg";
-        let (image_width, image_height, image_buf) = open_image(image_path)?;
 
         let uniform = device.create_buffer(&BufferDescriptor {
             label: None,
@@ -178,7 +215,7 @@ impl State {
                 BindGroupEntry {
                     binding: 1,
                     resource: buffer.as_entire_binding(),
-                }
+                },
             ],
         });
 
@@ -189,7 +226,6 @@ impl State {
             surface_format,
             surface,
             size: init_size,
-            buffer,
             bind_group,
         };
 
@@ -204,6 +240,7 @@ impl State {
     }
 
     fn reconfigure_surface(&mut self) {
+        info!("Configure surface: width {}, height {}", self.size.0, self.size.1);
         self.surface.configure(
             &self.device,
             &SurfaceConfiguration {
