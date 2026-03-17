@@ -2,9 +2,12 @@ use std::env;
 use std::sync::Arc;
 use std::time::Instant;
 use winit::application::ApplicationHandler;
+use winit::dpi;
+use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::window::{Window, WindowId};
+use winit::window::{Window, WindowAttributes, WindowId};
+use wgpu_playground::default;
 
 struct App {
     state: Option<render::State>,
@@ -23,9 +26,11 @@ impl App {
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         // Create window object
+        let mut attributes = WindowAttributes::default();
+        // attributes.inner_size = Some(dpi::Size::Physical(PhysicalSize::new(1024, 1024)));
         let window = Arc::new(
             event_loop
-                .create_window(Window::default_attributes())
+                .create_window(attributes)
                 .unwrap(),
         );
 
@@ -56,6 +61,7 @@ impl ApplicationHandler for App {
             WindowEvent::Resized(size) => {
                 // Reconfigures the size of the surface. We do not re-render
                 // here as this event is always followed up by redraw request.
+                println!("{:?}", size);
                 state.resize((size.width, size.height));
             }
             _ => {}
