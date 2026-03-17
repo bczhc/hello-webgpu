@@ -21,7 +21,7 @@ fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
 @fragment
 fn fs(@builtin(position) fs_pos: vec4f) -> @location(0) vec4f {
     let pos: vec2u = vec2u(fs_pos.xy);
-    let offset = pos.x + pos.y * info.width_pixels * 3;
+    let offset = (pos.x + pos.y * info.width_pixels) * 3;
     let r = texture_buffer[offset];
     let g = texture_buffer[offset + 1];
     let b = texture_buffer[offset + 2];

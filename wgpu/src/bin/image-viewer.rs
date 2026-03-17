@@ -94,7 +94,6 @@ struct State {
     surface_format: wgpu::TextureFormat,
     surface: Surface<'static>,
     size: (u32, u32),
-    uniform: wgpu::Buffer,
     buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
 }
@@ -190,7 +189,6 @@ impl State {
             surface_format,
             surface,
             size: init_size,
-            uniform,
             buffer,
             bind_group,
         };
