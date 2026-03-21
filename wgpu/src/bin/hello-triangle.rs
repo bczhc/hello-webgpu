@@ -87,12 +87,8 @@ mod render {
     use std::sync::Arc;
     use bytemuck::bytes_of;
     use chrono::Local;
-    use wgpu::{
-        include_wgsl, BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer,
-        BufferBinding, BufferDescriptor, BufferUsages, Color, ColorTargetState, Device, FragmentState,
-        Queue, RenderPipeline, RenderPipelineDescriptor, VertexAttribute,
-        VertexBufferLayout, VertexFormat, VertexState,
-    };
+    use log::error;
+    use wgpu::{include_wgsl, BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferBinding, BufferDescriptor, BufferUsages, Color, ColorTargetState, Device, FragmentState, Queue, RenderPipeline, RenderPipelineDescriptor, SurfaceError, VertexAttribute, VertexBufferLayout, VertexFormat, VertexState};
     use wgpu_playground::{default, wgpu_instance_with_env_backend, ColorExt};
     use winit::window::Window;
 
@@ -190,10 +186,19 @@ mod render {
 
         pub fn render(&self, redraw_callback: impl FnOnce()) {
             // Create texture view
-            let surface_texture = self
+            let surface_texture = match self
                 .surface
-                .get_current_texture()
-                .expect("failed to acquire next swapchain texture");
+                .get_current_texture() {
+                Ok(x) => x,
+                Err(SurfaceError::Outdated) => {
+                    self.configure_surface();
+                    return;
+                }
+                Err(e) => {
+                    error!("Failed to acquire next swapchain texture: {:?}", e);
+                    return;
+                }
+            };
             let texture_view = surface_texture
                 .texture
                 .create_view(&wgpu::TextureViewDescriptor {

@@ -1,12 +1,12 @@
 use bytemuck::{bytes_of, cast_slice_mut};
 use clap::Parser;
 use image::GenericImageView;
+use log::{error, info};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use log::info;
 use wgpu::{
-    include_wgsl, BindGroupDescriptor, BindGroupEntry, BufferDescriptor, BufferUsages,
-    ColorTargetState, Device, FragmentState, Instance, LoadOp, LoadOpDontCare, Operations,
+    include_wgsl, BindGroupDescriptor, BindGroupEntry, BufferDescriptor, BufferUsages, ColorTargetState,
+    Device, FragmentState, Instance, LoadOp, LoadOpDontCare, Operations,
     RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, StoreOp,
     Surface, SurfaceConfiguration, TextureUsages, TextureViewDescriptor, TextureViewDimension,
     VertexState,
@@ -68,16 +68,24 @@ impl ApplicationHandler for App {
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
-                state
-                    .render(|| {
-                        window.pre_present_notify();
-                    })
-                    .unwrap();
+                let render_result = state.render(|| {
+                    window.pre_present_notify();
+                });
+                match render_result {
+                    Ok(_) => {}
+                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+                        state.reconfigure_surface();
+                    }
+                    Err(e) => {
+                        error!("Render error: {:?}", e);
+                        event_loop.exit();
+                    }
+                }
             }
             WindowEvent::Resized(size) => {
                 state.resize((size.width as _, size.height as _));
             }
-            WindowEvent::KeyboardInput {event, ..} => {
+            WindowEvent::KeyboardInput { event, .. } => {
                 if event.logical_key == Key::Character("q".into()) {
                     event_loop.exit();
                 }
@@ -240,7 +248,10 @@ impl State {
     }
 
     fn reconfigure_surface(&mut self) {
-        info!("Configure surface: width {}, height {}", self.size.0, self.size.1);
+        info!(
+            "Configure surface: width {}, height {}",
+            self.size.0, self.size.1
+        );
         self.surface.configure(
             &self.device,
             &SurfaceConfiguration {
@@ -256,7 +267,7 @@ impl State {
         );
     }
 
-    fn render(&self, pre_present_op: impl FnOnce()) -> anyhow::Result<()> {
+    fn render(&self, pre_present_op: impl FnOnce()) -> Result<(), wgpu::SurfaceError> {
         let mut encoder = self.device.create_command_encoder(&default!());
 
         let texture = self.surface.get_current_texture()?;

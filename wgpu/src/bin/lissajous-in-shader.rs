@@ -2,14 +2,10 @@ use palette::{FromColor, Srgb};
 use std::env;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use log::error;
 use wgpu::util::RenderEncoder;
 use wgpu::VertexFormat::Float32x2;
-use wgpu::{
-    include_wgsl, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferDescriptor,
-    BufferUsages, Color, ColorTargetState, Device, FragmentState, Instance, PrimitiveState,
-    PrimitiveTopology, RenderPipeline, RenderPipelineDescriptor, ShaderModule, VertexAttribute,
-    VertexBufferLayout, VertexState,
-};
+use wgpu::{include_wgsl, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferDescriptor, BufferUsages, Color, ColorTargetState, Device, FragmentState, Instance, PrimitiveState, PrimitiveTopology, RenderPipeline, RenderPipelineDescriptor, ShaderModule, SurfaceError, SurfaceTexture, VertexAttribute, VertexBufferLayout, VertexState};
 use winit::event::{ElementState, MouseButton};
 use winit::keyboard::{Key, NamedKey};
 use winit::{
@@ -154,7 +150,7 @@ impl State {
             width: self.size.width,
             height: self.size.height,
             desired_maximum_frame_latency: 2,
-            present_mode: wgpu::PresentMode::AutoNoVsync,
+            present_mode: wgpu::PresentMode::AutoVsync,
         };
         self.surface.configure(&self.device, &surface_config);
     }
@@ -168,10 +164,19 @@ impl State {
 
     fn render(&mut self) {
         // Create texture view
-        let surface_texture = self
+        let surface_texture = match self
             .surface
-            .get_current_texture()
-            .expect("failed to acquire next swapchain texture");
+            .get_current_texture() {
+            Ok(x) => x,
+            Err(SurfaceError::Outdated) => {
+                self.configure_surface();
+                return;
+            }
+            Err(e) => {
+                error!("Failed to acquire next swapchain texture: {:?}", e);
+                return;
+            }
+        };
         let texture_view = surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor {

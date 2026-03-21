@@ -87,7 +87,9 @@ impl ApplicationHandler for App {
                 state.update();
                 match state.render(|| w.pre_present_notify()) {
                     Ok(_) => {}
-                    Err(wgpu::SurfaceError::Lost) => state.resize(state.size),
+                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+                        state.configure_surface()
+                    }
                     Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
                     Err(e) => eprintln!("{:?}", e),
                 }
