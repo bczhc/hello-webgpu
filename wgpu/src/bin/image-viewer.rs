@@ -196,19 +196,36 @@ fn main() -> anyhow::Result<()> {
 
     let mut image_list = Vec::new();
 
-    if args.path.is_file() {
-        image_list.push(args.path);
+    let dir_path: PathBuf = if !args.path.is_dir() {
+        let parent = args
+            .path
+            .parent()
+            .expect("Can't get the parent of the given file path");
+        parent.into()
     } else {
-        let dir = fs::read_dir(args.path)?;
-        for x in dir {
-            let entry = x?;
-            let path = entry.path();
-            if path.extension() == Some(OsStr::new("jpg"))
-                || path.extension() == Some(OsStr::new("png"))
-            {
-                image_list.push(path);
-            }
+        args.path.clone()
+    };
+
+    let dir = fs::read_dir(dir_path)?;
+    for x in dir {
+        let entry = x?;
+        let path = entry.path();
+        if path.extension() == Some(OsStr::new("jpg"))
+            || path.extension() == Some(OsStr::new("png"))
+        {
+            image_list.push(path);
         }
+    }
+    image_list.sort();
+
+    // display the given image first
+    let mut image_index = 0_usize;
+    if !args.path.is_dir() {
+        let position = image_list
+            .iter()
+            .position(|x| x.canonicalize().unwrap() == args.path.canonicalize().unwrap())
+            .unwrap();
+        image_index = position;
     }
 
     if image_list.is_empty() {
@@ -223,7 +240,7 @@ fn main() -> anyhow::Result<()> {
         state: None,
         window: None,
         image_list,
-        image_index: 0,
+        image_index,
     };
     el.run_app(&mut app)?;
     Ok(())
