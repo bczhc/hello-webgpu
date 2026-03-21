@@ -1,11 +1,7 @@
 use crate::{ColorExt, WgpuStateInitInfo};
 use bytemuck::checked::cast_slice;
-use wgpu::{
-    include_wgsl, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferDescriptor,
-    BufferUsages, Color, ColorTargetState, Device, FragmentState, Queue,
-    RenderPipeline, RenderPipelineDescriptor, VertexAttribute, VertexBufferLayout,
-    VertexFormat, VertexState,
-};
+use log::{error, info};
+use wgpu::{include_wgsl, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferDescriptor, BufferUsages, Color, ColorTargetState, Device, FragmentState, Queue, RenderPipeline, RenderPipelineDescriptor, SurfaceError, SurfaceTexture, VertexAttribute, VertexBufferLayout, VertexFormat, VertexState};
 
 pub struct State {
     device: wgpu::Device,
@@ -138,11 +134,14 @@ impl State {
     }
 
     pub fn update_elapsed(&self, value: f32) {
+        let value = 0.0f32;
         self.queue
             .write_buffer(&self.uniform_buffer, 0, cast_slice(&[value]));
     }
 
     pub fn configure_surface(&self) {
+        info!("Configure the surface; size: {:?}", self.size);
+
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: self.surface_format,
@@ -165,11 +164,21 @@ impl State {
     }
 
     pub fn render(&self, redraw_callback: impl FnOnce()) {
+        info!("Render; size: {:?}", self.size);
+
         // Create texture view
         let surface_texture = self
             .surface
-            .get_current_texture()
-            .expect("failed to acquire next swapchain texture");
+            .get_current_texture();
+        let surface_texture = match surface_texture {
+            Ok(x) => {x}
+            Err(e) => {
+                error!("Can't acquire the next swapchain texture: {:?}. Reconfiguring...", e);
+                self.configure_surface();
+                return;
+            }
+        };
+
         let texture_view = surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor {
