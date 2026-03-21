@@ -1,14 +1,18 @@
-use bytemuck::{bytes_of, cast_slice_mut};
+use bytemuck::{bytes_of, cast_slice_mut, Pod, Zeroable};
 use clap::Parser;
 use image::GenericImageView;
 use log::{error, info};
+use static_assertions::{assert_eq_size, const_assert_eq};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use wgpu::wgt::strict_assert_eq;
 use wgpu::{
-    include_wgsl, BindGroupDescriptor, BindGroupEntry, BufferDescriptor, BufferUsages, ColorTargetState,
-    Device, FragmentState, Instance, LoadOp, LoadOpDontCare, Operations,
-    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, StoreOp,
-    Surface, SurfaceConfiguration, TextureUsages, TextureViewDescriptor, TextureViewDimension,
+    include_wgsl, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferDescriptor,
+    BufferUsages, ColorTargetState, Device, Extent3d, FilterMode, FragmentState, Instance,
+    LoadOp, LoadOpDontCare, Operations, RenderPassColorAttachment, RenderPassDescriptor,
+    RenderPipeline, RenderPipelineDescriptor, SamplerDescriptor, StoreOp, Surface,
+    SurfaceConfiguration, TexelCopyBufferLayout, TexelCopyTextureInfo, TextureDescriptor,
+    TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor, TextureViewDimension,
     VertexState,
 };
 use wgpu_playground::{default, set_up_logger, wgpu_instance_with_env_backend};
@@ -95,19 +99,22 @@ impl ApplicationHandler for App {
     }
 }
 
+/// Returns rgba8888
 fn open_image(path: impl AsRef<Path>) -> anyhow::Result<(u32, u32, Vec<u8>)> {
     let img = image::open(path)?;
     let width = img.width();
     let height = img.height();
 
-    let mut rgb888_buf = Vec::with_capacity(width as usize * height as usize * 3);
+    let mut out_buf = Vec::with_capacity(width as usize * height as usize * 3);
     for x in img.pixels() {
-        rgb888_buf.push(x.2[0]);
-        rgb888_buf.push(x.2[1]);
-        rgb888_buf.push(x.2[2]);
+        out_buf.push(x.2[0]);
+        out_buf.push(x.2[1]);
+        out_buf.push(x.2[2]);
+        // alpha
+        out_buf.push(255);
     }
 
-    Ok((width, height, rgb888_buf))
+    Ok((width, height, out_buf))
 }
 
 #[derive(Parser)]
@@ -135,6 +142,15 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[derive(Debug, Copy, Clone, Pod, Zeroable)]
+#[repr(C)]
+struct Uniform {
+    image_size: [u32; 2],
+    out_size: [u32; 2],
+}
+
+assert_eq_size!(Uniform, [u32; 4]);
+
 struct State {
     device: Device,
     pipeline: RenderPipeline,
@@ -143,6 +159,10 @@ struct State {
     surface: Surface<'static>,
     size: (u32, u32),
     bind_group: wgpu::BindGroup,
+    uniform: Buffer,
+    uniform_data: Uniform,
+    texture: wgpu::Texture,
+    sampler: wgpu::Sampler,
 }
 
 impl State {
@@ -191,26 +211,32 @@ impl State {
 
         let uniform = device.create_buffer(&BufferDescriptor {
             label: None,
-            size: 1 * 4,
+            size: size_of::<Uniform>() as u64,
             usage: BufferUsages::COPY_DST | BufferUsages::UNIFORM,
             mapped_at_creation: false,
         });
         queue.write_buffer(&uniform, 0, bytes_of(&[image_width]));
 
-        let buffer = device.create_buffer(&BufferDescriptor {
+        let sampler = device.create_sampler(&SamplerDescriptor {
             label: None,
-            size: image_width as u64 * image_height as u64 * 3 * 4,
-            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
-            mapped_at_creation: true,
+            mag_filter: FilterMode::Nearest,
+            min_filter: FilterMode::Nearest,
+            ..default!()
         });
-        let mut range = buffer.get_mapped_range_mut(..);
-        let view = &mut *range;
-        let view: &mut [u32] = cast_slice_mut(view);
-        for (i, x) in image_buf.iter().enumerate() {
-            view[i] = *x as u32;
-        }
-        drop(range);
-        buffer.unmap();
+        let texture = device.create_texture(&TextureDescriptor {
+            label: None,
+            size: Extent3d {
+                width: image_width,
+                height: image_height,
+                depth_or_array_layers: 1,
+            },
+            sample_count: 1,
+            mip_level_count: 1,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Rgba8Unorm,
+            usage: TextureUsages::COPY_DST | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[TextureFormat::Rgba8UnormSrgb],
+        });
 
         let bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: None,
@@ -222,10 +248,36 @@ impl State {
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: buffer.as_entire_binding(),
+                    resource: BindingResource::Sampler(&sampler),
+                },
+                BindGroupEntry {
+                    binding: 2,
+                    resource: BindingResource::TextureView(
+                        &texture.create_view(&TextureViewDescriptor::default()),
+                    ),
                 },
             ],
         });
+
+        queue.write_texture(
+            TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: Default::default(),
+                aspect: Default::default(),
+            },
+            &image_buf,
+            TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(image_width * 4 * 1),
+                rows_per_image: None,
+            },
+            Extent3d {
+                width: image_width,
+                height: image_height,
+                depth_or_array_layers: 1,
+            },
+        );
 
         let mut state = Self {
             device,
@@ -235,11 +287,22 @@ impl State {
             surface,
             size: init_size,
             bind_group,
+            uniform,
+            uniform_data: Uniform::zeroed(),
+            sampler,
+            texture,
         };
+        state.uniform_data.image_size = [image_width, image_height];
+        state.write_uniform();
 
         // run an initial surface configuration
         state.reconfigure_surface();
         Ok(state)
+    }
+
+    fn write_uniform(&self) {
+        self.queue
+            .write_buffer(&self.uniform, 0, bytes_of(&self.uniform_data));
     }
 
     fn resize(&mut self, size: (u32, u32)) {
@@ -267,7 +330,10 @@ impl State {
         );
     }
 
-    fn render(&self, pre_present_op: impl FnOnce()) -> Result<(), wgpu::SurfaceError> {
+    fn render(&mut self, pre_present_op: impl FnOnce()) -> Result<(), wgpu::SurfaceError> {
+        self.uniform_data.out_size = self.size.into();
+        self.write_uniform();
+
         let mut encoder = self.device.create_command_encoder(&default!());
 
         let texture = self.surface.get_current_texture()?;

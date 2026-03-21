@@ -25,6 +25,7 @@ rayon = "1.11.0"
 clap = { version = "4.5.57", features = ["derive"] }
 num-format = "0.4.4"
 image = "0.25.10"
+static_assertions = "1.1.0"
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 winit = "0.30.12"
