@@ -20,10 +20,11 @@ use wgpu::{
 };
 use wgpu_playground::{default, set_up_logger, wgpu_instance_with_env_backend};
 use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
+use winit::event::{MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey, SmolStr};
-use winit::window::{Window, WindowId};
+use winit::monitor::MonitorHandle;
+use winit::window::{Fullscreen, Window, WindowId};
 
 struct App {
     state: Option<State>,
@@ -41,7 +42,8 @@ impl ApplicationHandler for App {
         let surface = instance.create_surface(window.clone()).unwrap();
         let window_size = window.inner_size();
 
-        let mut state = State::new(instance, surface, (window_size.width, window_size.height)).unwrap();
+        let mut state =
+            State::new(instance, surface, (window_size.width, window_size.height)).unwrap();
         state.set_image(&self.image_list[self.image_index]).unwrap();
 
         self.state = Some(state);
@@ -94,26 +96,71 @@ impl ApplicationHandler for App {
                     Key::Character(x) if x == "q" => {
                         event_loop.exit();
                     }
+                    Key::Character(x) if x == "f" => {
+                        self.toggle_fullscreen();
+                    }
                     Key::Named(NamedKey::ArrowLeft) => {
-                        if self.image_index == 0 {
-                            self.image_index = self.image_list.len() - 1;
-                        } else {
-                            self.image_index -= 1;
-                        }
-                        state.set_image(&self.image_list[self.image_index]).unwrap();
+                        self.previous_image();
                     }
                     Key::Named(NamedKey::ArrowRight) => {
-                        if self.image_index == self.image_list.len() - 1 {
-                            self.image_index = 0;
-                        } else {
-                            self.image_index += 1;
-                        }
-                        state.set_image(&self.image_list[self.image_index]).unwrap();
+                        self.next_image();
                     }
                     _ => {}
                 }
             }
+            WindowEvent::MouseWheel {
+                delta: MouseScrollDelta::LineDelta(_x, y),
+                ..
+            } => {
+                if y == -1.0 {
+                    self.next_image();
+                } else if y == 1.0 {
+                    self.previous_image();
+                }
+            }
             _ => {}
+        }
+    }
+}
+
+impl App {
+    fn previous_image(&mut self) {
+        let Some(ref mut state) = self.state else {
+            return;
+        };
+        if self.image_index == 0 {
+            self.image_index = self.image_list.len() - 1;
+        } else {
+            self.image_index -= 1;
+        }
+        state.set_image(&self.image_list[self.image_index]).unwrap();
+    }
+
+    fn next_image(&mut self) {
+        let Some(ref mut state) = self.state else {
+            return;
+        };
+        if self.image_index == self.image_list.len() - 1 {
+            self.image_index = 0;
+        } else {
+            self.image_index += 1;
+        }
+        state.set_image(&self.image_list[self.image_index]).unwrap();
+    }
+
+    fn toggle_fullscreen(&self) {
+        let Some(ref window) = self.window else {
+            return;
+        };
+        let state = window.fullscreen();
+        match state {
+            None => {
+                let monitor_handle = window.current_monitor();
+                window.set_fullscreen(Some(Fullscreen::Borderless(monitor_handle)))
+            }
+            Some(_x) => {
+                window.set_fullscreen(None);
+            }
         }
     }
 }
