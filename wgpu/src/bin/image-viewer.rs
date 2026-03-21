@@ -5,16 +5,9 @@ use log::{error, info};
 use static_assertions::{assert_eq_size, const_assert_eq};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use chrono::Local;
 use wgpu::wgt::strict_assert_eq;
-use wgpu::{
-    include_wgsl, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferDescriptor,
-    BufferUsages, ColorTargetState, Device, Extent3d, FilterMode, FragmentState, Instance,
-    LoadOp, LoadOpDontCare, Operations, RenderPassColorAttachment, RenderPassDescriptor,
-    RenderPipeline, RenderPipelineDescriptor, SamplerDescriptor, StoreOp, Surface,
-    SurfaceConfiguration, TexelCopyBufferLayout, TexelCopyTextureInfo, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor, TextureViewDimension,
-    VertexState,
-};
+use wgpu::{include_wgsl, AddressMode, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferDescriptor, BufferUsages, ColorTargetState, Device, Extent3d, FilterMode, FragmentState, Instance, LoadOp, LoadOpDontCare, Operations, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, SamplerDescriptor, StoreOp, Surface, SurfaceConfiguration, TexelCopyBufferLayout, TexelCopyTextureInfo, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor, TextureViewDimension, VertexState};
 use wgpu_playground::{default, set_up_logger, wgpu_instance_with_env_backend};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -85,6 +78,7 @@ impl ApplicationHandler for App {
                         event_loop.exit();
                     }
                 }
+                window.request_redraw();
             }
             WindowEvent::Resized(size) => {
                 state.resize((size.width as _, size.height as _));
@@ -147,9 +141,10 @@ fn main() -> anyhow::Result<()> {
 struct Uniform {
     image_size: [u32; 2],
     out_size: [u32; 2],
+    uv_offset: [f32; 2],
 }
 
-assert_eq_size!(Uniform, [u32; 4]);
+assert_eq_size!(Uniform, [u32; 6]);
 
 struct State {
     device: Device,
@@ -219,8 +214,10 @@ impl State {
 
         let sampler = device.create_sampler(&SamplerDescriptor {
             label: None,
-            mag_filter: FilterMode::Nearest,
-            min_filter: FilterMode::Nearest,
+            mag_filter: FilterMode::Linear,
+            min_filter: FilterMode::Linear,
+            address_mode_u: AddressMode::Repeat,
+            address_mode_v: AddressMode::Repeat,
             ..default!()
         });
         let texture = device.create_texture(&TextureDescriptor {
@@ -332,6 +329,10 @@ impl State {
 
     fn render(&mut self, pre_present_op: impl FnOnce()) -> Result<(), wgpu::SurfaceError> {
         self.uniform_data.out_size = self.size.into();
+
+        let subsec = Local::now().timestamp_subsec_nanos() as f64 / 1_000_000_000.0;
+        let offset = subsec * 1000000.0;
+        self.uniform_data.uv_offset = [offset as u32 as f32, offset as u32 as f32];
         self.write_uniform();
 
         let mut encoder = self.device.create_command_encoder(&default!());

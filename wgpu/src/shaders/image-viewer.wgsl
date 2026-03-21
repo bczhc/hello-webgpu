@@ -1,6 +1,7 @@
 struct Info {
     image_size: vec2u,
     out_size: vec2u,
+    uv_offset: vec2f,
 }
 
 @group(0) @binding(0) var<uniform> info: Info;
@@ -25,6 +26,6 @@ fn fs(@builtin(position) fs_pos: vec4f) -> @location(0) vec4f {
     let u = fs_pos.x / f32(info.out_size.x);
     let v = fs_pos.y / f32(info.out_size.y);
 
-    let color = textureSample(texture, samp, vec2f(u, v));
+    let color = textureSample(texture, samp, vec2f(u, v) + info.uv_offset);
     return color;
 }
