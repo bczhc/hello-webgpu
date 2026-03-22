@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Pixel Artist Lab Pro</title>
+    <style>
+        :root {
+            --bg: #ffffff;
+            --panel: #f8f9fa;
+            --border: #ddd;
+            --accent: #007acc;
+        }
+
+        body {
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            background: var(--bg);
+            color: #333;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            overflow: hidden;
+        }
+
+        /* --- 左侧面板 --- */
+        #viewport {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border);
+        }
+
+        .toolbar {
+            padding: 10px 15px;
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            font-size: 13px;
+            z-index: 20;
+        }
+
+        .canvas-stack-container {
+            flex: 1;
+            position: relative;
+            background: #e5e5e5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .canvas-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            image-rendering: pixelated;
+        }
+
+        #gpuCanvas {
+            z-index: 1;
+            background: white;
+            position: relative;
+        }
+
+        #gridCanvas {
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        /* --- 右侧面板：CodeMirror 编辑器容器 --- */
+        /* 修改右侧容器布局 */
+        #editor-container {
+            width: 45%;
+            display: flex;
+            flex-direction: column;
+            background: #fff;
+            height: 100vh; /* 强制容器高度为视口高度 */
+        }
+
+        /* 核心：固定编辑器高度，允许内部滚动 */
+        #editor-mount {
+            flex: 1;
+            overflow: hidden;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .cm-editor {
+            height: 100% !important; /* 覆盖插件默认高度 */
+        }
+
+        .cm-scroller {
+            font-family: 'Fira Code', 'Consolas', monospace !important;
+        }
+
+        #error-console {
+            height: 30%;
+            background: var(--panel);
+            border-top: 2px solid var(--border);
+            padding: 12px;
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+            overflow-y: auto;
+            z-index: 30;
+        }
+
+        .console-header {
+            font-size: 11px;
+            font-weight: bold;
+            color: #999;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            border-bottom: 1px solid #eee;
+        }
+
+        #msg {
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.4;
+        }
+
+        button {
+            padding: 5px 12px;
+            cursor: pointer;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        button:active {
+            opacity: 0.8;
+        }
+
+        input {
+            width: 45px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            padding: 2px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="viewport">
+    <div class="toolbar">
+        <span>Res: <input type="number" id="res" value="32"></span>
+        <span>Zoom: <input type="number" id="zoom" value="16">x</span>
+        <label><input type="checkbox" id="showGrid" checked> Show Grid</label>
+        <button id="runBtn">Run (Ctrl+S)</button>
+    </div>
+    <div class="canvas-stack-container">
+        <div class="canvas-wrapper" id="wrapper">
+            <canvas id="gpuCanvas" class="canvas-layer"></canvas>
+            <canvas id="gridCanvas" class="canvas-layer"></canvas>
+        </div>
+    </div>
+</div>
+
+<div id="editor-container">
+    <div id="editor-mount"></div>
+    <div id="error-console">
+        <div class="console-header">Debug Console / Errors</div>
+        <div id="msg" style="color: #666;">Ready. Press Ctrl+S to compile.</div>
+    </div>
+</div>
+
+<script type="module">
+    import {EditorView, basicSetup} from "codemirror";
+    import {keymap} from "@codemirror/view";
+    import {cpp} from "@codemirror/lang-cpp";
+    import {indentUnit} from "@codemirror/language";
+    import {autocompletion} from "@codemirror/autocomplete";
+    import {indentWithTab} from "@codemirror/commands";
+
+    const gpuCanvas = document.getElementById('gpuCanvas');
+    const gridCanvas = document.getElementById('gridCanvas');
+    const wrapper = document.getElementById('wrapper');
+    const msg = document.getElementById('msg');
+    const resInput = document.getElementById('res');
+    const zoomInput = document.getElementById('zoom');
+    const gridCheck = document.getElementById('showGrid');
+
+    let device, context, editorView;
+
+    // 默认 Shader 代码
+    const initialCode = `@fragment
+fn fs_main(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+    let res = vec2f(32.0, 32.0);
+    let uv = pos.xy / res;
+
+    // 绘制算法练习：
+    let d = distance(uv, vec2f(0.5));
+    let ring = smoothstep(0.4, 0.41, d) - smoothstep(0.45, 0.46, d);
+
+    let color = mix(vec3f(1.0), vec3f(0.9, 0.4, 0.1), ring);
+    return vec4f(color, 1.0);
+}
+
+@vertex
+fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
+    var p = array<vec2f, 4>(vec2f(-1,-1), vec2f(1,-1), vec2f(-1,1), vec2f(1,1));
+    var idx = array<u32, 6>(0, 1, 2, 2, 1, 3);
+    return vec4f(p[idx[i]], 0.0, 1.0);
+}`;
+
+    async function init() {
+        // 1. 初始化编辑器
+        editorView = new EditorView({
+            doc: initialCode,
+            extensions: [
+                basicSetup,
+                autocompletion({
+                    activateOnTyping: true,
+                    icons: false,
+                }),
+                indentUnit.of("    "),
+                keymap.of([
+                    indentWithTab, {
+                        key: "Mod-s",
+                        run: () => {
+                            render();
+                            return true;
+                        }
+                    }]),
+                EditorView.lineWrapping
+            ],
+            parent: document.getElementById("editor-mount")
+        });
+
+        // 2. 初始化 WebGPU
+        if (!navigator.gpu) {
+            msg.innerText = "Error: WebGPU not supported.";
+            return;
+        }
+        const adapter = await navigator.gpu.requestAdapter();
+        device = await adapter.requestDevice();
+        context = gpuCanvas.getContext('webgpu');
+
+        syncSize();
+        render();
+    }
+
+    function syncSize() {
+        const r = parseInt(resInput.value) || 32;
+        const z = parseInt(zoomInput.value) || 16;
+        const totalSize = r * z;
+
+        wrapper.style.width = totalSize + "px";
+        wrapper.style.height = totalSize + "px";
+
+        gpuCanvas.width = gpuCanvas.height = r;
+        gpuCanvas.style.width = gpuCanvas.style.height = totalSize + "px";
+
+        gridCanvas.width = gridCanvas.height = totalSize;
+        gridCanvas.style.width = gridCanvas.style.height = totalSize + "px";
+
+        const format = navigator.gpu.getPreferredCanvasFormat();
+        context.configure({device, format, alphaMode: 'premultiplied'});
+
+        drawGridLines();
+    }
+
+    function drawGridLines() {
+        const ctx = gridCanvas.getContext('2d');
+        const r = parseInt(resInput.value) || 32;
+        const z = parseInt(zoomInput.value) || 16;
+        ctx.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
+        if (!gridCheck.checked) return;
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.15)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let i = 0; i <= r; i++) {
+            let pos = i * z;
+            ctx.moveTo(pos, 0);
+            ctx.lineTo(pos, r * z);
+            ctx.moveTo(0, pos);
+            ctx.lineTo(r * z, pos);
+        }
+        ctx.stroke();
+    }
+
+    async function render() {
+        if (!device) return;
+
+        // 从 CodeMirror 获取代码
+        const shaderCode = editorView.state.doc.toString();
+        const format = navigator.gpu.getPreferredCanvasFormat();
+
+        msg.innerText = "Compiling...";
+        msg.style.color = "#666";
+
+        device.pushErrorScope('validation');
+
+        const shaderModule = device.createShaderModule({code: shaderCode});
+        const pipelineDesc = {
+            layout: 'auto',
+            vertex: {module: shaderModule, entryPoint: 'vs_main'},
+            fragment: {module: shaderModule, entryPoint: 'fs_main', targets: [{format}]},
+            primitive: {topology: 'triangle-list'}
+        };
+
+        try {
+            const pipeline = await device.createRenderPipelineAsync(pipelineDesc);
+            const error = await device.popErrorScope();
+
+            if (error) {
+                msg.innerText = "⚠️ Shader Error:\n\n" + error.message;
+                msg.style.color = "#d32f2f";
+                return;
+            }
+
+            const commandEncoder = device.createCommandEncoder();
+            const pass = commandEncoder.beginRenderPass({
+                colorAttachments: [{
+                    view: context.getCurrentTexture().createView(),
+                    loadOp: 'clear',
+                    clearValue: {r: 1, g: 1, b: 1, a: 1},
+                    storeOp: 'store'
+                }]
+            });
+            pass.setPipeline(pipeline);
+            pass.draw(6);
+            pass.end();
+            device.queue.submit([commandEncoder.finish()]);
+
+            msg.innerText = "✅ Success: Updated at " + new Date().toLocaleTimeString();
+            msg.style.color = "#2e7d32";
+        } catch (e) {
+            msg.innerText = "Internal Error: " + e.message;
+            msg.style.color = "#d32f2f";
+            await device.popErrorScope();
+        }
+    }
+
+    // UI 交互
+    resInput.onchange = () => {
+        syncSize();
+        render();
+    };
+    zoomInput.onchange = syncSize;
+    gridCheck.onchange = drawGridLines;
+    document.getElementById('runBtn').onclick = render;
+
+    init();
+</script>
+</body>
+</html>

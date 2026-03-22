@@ -17,4 +17,5 @@ export const demos = [
     'storage-texture-write-in-compute-shader',
     'hello-triangle-msaa',
     'bind-group-layout',
+    'wgsl-playground',
 ];
