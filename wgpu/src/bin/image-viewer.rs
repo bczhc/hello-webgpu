@@ -26,14 +26,15 @@ use winit::keyboard::{Key, NamedKey, SmolStr};
 use winit::monitor::MonitorHandle;
 use winit::window::{Fullscreen, Window, WindowId};
 
-struct App {
+struct App<'a> {
     state: Option<State>,
     window: Option<Arc<Window>>,
     image_list: Vec<PathBuf>,
     image_index: usize,
+    args: &'a Args,
 }
 
-impl ApplicationHandler for App {
+impl ApplicationHandler for App<'_> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let window = event_loop.create_window(default!()).unwrap();
         let window = Arc::new(window);
@@ -42,8 +43,13 @@ impl ApplicationHandler for App {
         let surface = instance.create_surface(window.clone()).unwrap();
         let window_size = window.inner_size();
 
-        let mut state =
-            State::new(instance, surface, (window_size.width, window_size.height)).unwrap();
+        let mut state = State::new(
+            instance,
+            surface,
+            (window_size.width, window_size.height),
+            self.args.no_scale,
+        )
+        .unwrap();
         state.set_image(&self.image_list[self.image_index]).unwrap();
 
         self.state = Some(state);
@@ -105,6 +111,9 @@ impl ApplicationHandler for App {
                     Key::Named(NamedKey::ArrowRight) => {
                         self.next_image();
                     }
+                    Key::Character(x) if x == "s" => {
+                        state.uniform_data.no_scale.flip();
+                    }
                     _ => {}
                 }
             }
@@ -123,7 +132,7 @@ impl ApplicationHandler for App {
     }
 }
 
-impl App {
+impl App<'_> {
     fn previous_image(&mut self) {
         let Some(ref mut state) = self.state else {
             return;
@@ -187,6 +196,9 @@ fn open_image(path: impl AsRef<Path>) -> anyhow::Result<(u32, u32, Vec<u8>)> {
 struct Args {
     /// Path of image file/a folder
     path: PathBuf,
+    /// Do not scale the image (use `textureLoad` in the shader)
+    #[arg(short = 's', long)]
+    no_scale: bool,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -241,6 +253,7 @@ fn main() -> anyhow::Result<()> {
         window: None,
         image_list,
         image_index,
+        args: &args,
     };
     el.run_app(&mut app)?;
     Ok(())
@@ -252,9 +265,33 @@ struct Uniform {
     image_size: [u32; 2],
     out_size: [u32; 2],
     uv_offset: [f32; 2],
+    _pad1: [u32; 2],
+    no_scale: WgpuBool,
+    _pad2: u32,
 }
 
-assert_eq_size!(Uniform, [u32; 6]);
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+#[repr(transparent)]
+struct WgpuBool(u32);
+
+impl WgpuBool {
+    fn flip(&mut self) {
+        let new_value = match self.0 {
+            0 => 1,
+            1 => 0,
+            x => x,
+        };
+        *self = Self(new_value);
+    }
+}
+
+impl From<bool> for WgpuBool {
+    fn from(value: bool) -> Self {
+        Self(value.into())
+    }
+}
+
+assert_eq_size!(Uniform, [u32; 10]);
 
 struct State {
     device: Device,
@@ -274,6 +311,7 @@ impl State {
         instance: Instance,
         surface: Surface<'static>,
         init_size: (u32, u32),
+        no_scale: bool,
     ) -> anyhow::Result<Self> {
         let adapter = pollster::block_on(instance.request_adapter(&default!()))?;
         let (device, queue) = pollster::block_on(adapter.request_device(&default!()))?;
@@ -338,6 +376,7 @@ impl State {
             uniform_data: Uniform::zeroed(),
             sampler,
         };
+        state.uniform_data.no_scale = no_scale.into();
         state.write_uniform();
 
         // run an initial surface configuration

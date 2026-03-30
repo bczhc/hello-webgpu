@@ -2,6 +2,9 @@ struct Info {
     image_size: vec2u,
     out_size: vec2u,
     uv_offset: vec2f,
+    _pad1: vec2u,
+    no_scale: u32,
+    _pad2: u32,
 }
 
 @group(0) @binding(0) var<uniform> info: Info;
@@ -23,9 +26,16 @@ fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
 
 @fragment
 fn fs(@builtin(position) fs_pos: vec4f) -> @location(0) vec4f {
+    let s = samp;
+
     let u = fs_pos.x / f32(info.out_size.x);
     let v = fs_pos.y / f32(info.out_size.y);
 
-    let color = textureSample(texture, samp, vec2f(u, v) + info.uv_offset);
+    var color: vec4f;
+    if info.no_scale == 1 {
+        color = textureLoad(texture, vec2u(fs_pos.xy), 0);
+    } else {
+        color = textureSample(texture, s, vec2f(u, v) + info.uv_offset);
+    }
     return color;
 }
