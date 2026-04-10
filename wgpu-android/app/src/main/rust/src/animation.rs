@@ -131,7 +131,7 @@ pub mod jni_exports {
     ) {
         info!("resize called");
         let wrapper = unsafe { &mut *(addr as *mut Wrapper) };
-        // wrapper.animator.resize((width as _, height as _)).unwrap();
+        wrapper.animator.resize((width as _, height as _)).unwrap();
     }
 
     #[unsafe(no_mangle)]
