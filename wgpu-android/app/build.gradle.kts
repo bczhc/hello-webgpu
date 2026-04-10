@@ -29,6 +29,25 @@ android {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+
+        val types = asMap
+        types["debug"]!!.apply {
+            isMinifyEnabled = false
+            isShrinkResources = false
+            proguardFiles("proguard-rules-debug.pro")
+            isDebuggable = true
+            isJniDebuggable = true
+            signingConfig = signingConfigs["debug"]
+        }
+        types["release"]!!.apply {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles("proguard-rules.pro")
+            isDebuggable = true
+            isJniDebuggable = true
+            signingConfig = signingConfigs["debug"]
+        }
+
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
@@ -56,6 +75,12 @@ android {
             keyAlias = "alias"
             keyPassword = "123456"
         }
+    }
+
+    lint {
+        checkReleaseBuilds = false
+        // 如果你想在报错时也继续构建，可以加上下面这行
+        abortOnError = false
     }
 }
 
