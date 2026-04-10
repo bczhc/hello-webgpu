@@ -1,5 +1,6 @@
 package pers.zhc.android.myapplication
 
+import android.net.Uri
 import android.os.Bundle
 import android.view.Choreographer
 import android.view.SurfaceHolder
@@ -9,7 +10,7 @@ import java.io.Serializable
 
 class Shadertoy : AppCompatActivity(), SurfaceHolder.Callback {
     private var addr = 0L
-    private lateinit var extraInfo: ExtraInfo
+    private lateinit var shadertoyCode: String
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -17,14 +18,33 @@ class Shadertoy : AppCompatActivity(), SurfaceHolder.Callback {
             setContentView(it.root)
         }
 
-        extraInfo = intent.getSerializableExtra(EXTRA_KEY) as ExtraInfo
+        val data: Uri? = intent.data
+        if (data != null) {
+            // 说明是从外部文件打开的
+            val codeText = readTextFromUri(data)
+            initShader(codeText)
+        } else {
+            // 说明是应用内跳转，走你原来的 Extra 逻辑
+            val info = intent.getSerializableExtra(EXTRA_KEY) as ExtraInfo?
+            info?.let { initShader(it.code) }
+        }
 
         bindings.surfaceView.holder.addCallback(this)
     }
 
+    private fun initShader(code: String) {
+        shadertoyCode = code
+    }
+
+    private fun readTextFromUri(uri: Uri): String {
+        return contentResolver.openInputStream(uri)?.use { inputStream ->
+            inputStream.bufferedReader().use { it.readText() }
+        } ?: ""
+    }
+
     override fun surfaceCreated(holder: SurfaceHolder) {
         val surface = holder.surface
-        addr = JNI.initWgpu(surface, JNI.Animations.SHADERTOY.id, extraInfo.code)
+        addr = JNI.initWgpu(surface, JNI.Animations.SHADERTOY.id, shadertoyCode)
 
         Choreographer.getInstance().postFrameCallback(object : Choreographer.FrameCallback {
             override fun doFrame(frameTimeNanos: Long) {
