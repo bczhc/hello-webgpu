@@ -1,10 +1,12 @@
 package pers.zhc.android.myapplication
 
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
-import android.view.Choreographer
-import android.view.SurfaceHolder
+import android.view.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import pers.zhc.android.myapplication.databinding.FullscreenSurfaceBinding
 import java.io.Serializable
 
@@ -14,6 +16,11 @@ class Shadertoy : AppCompatActivity(), SurfaceHolder.Callback {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        WindowCompat
+            .getInsetsController(window, window.decorView)
+            .hide(WindowInsetsCompat.Type.navigationBars())
+
         val bindings = FullscreenSurfaceBinding.inflate(layoutInflater).also {
             setContentView(it.root)
         }

@@ -35,7 +35,7 @@
         <activity
             android:name=".Shadertoy"
             android:exported="true"
-            android:theme="@style/Theme.MyApplication">
+            android:theme="@style/Theme.Shadertoy.FullScreen">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
             </intent-filter>
