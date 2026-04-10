@@ -1,4 +1,4 @@
-override KERNEL_ITERATIONS: i32 = 0;
+override KERNEL_ITERATIONS: i32 = 5;
 
 struct Uniforms {
     origin: vec3f,

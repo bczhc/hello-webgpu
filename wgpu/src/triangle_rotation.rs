@@ -134,7 +134,6 @@ impl State {
     }
 
     pub fn update_elapsed(&self, value: f32) {
-        let value = 0.0f32;
         self.queue
             .write_buffer(&self.uniform_buffer, 0, cast_slice(&[value]));
     }
