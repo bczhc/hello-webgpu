@@ -10,7 +10,7 @@ object JNI {
     }
 
     private external fun initLogger()
-    external fun initWgpu(surface: Surface, animationId: Int): Long
+    external fun initWgpu(surface: Surface, animationId: Int, extraCode: String?): Long
     external fun resize(addr: Long, width: Int, height: Int)
     external fun cleanup(addr: Long)
     external fun frame(addr: Long)
@@ -19,6 +19,7 @@ object JNI {
     enum class Animations(val id: Int) {
         ROTATING_TRIANGLE(0),
         VSBM(1),
+        SHADERTOY(2),
     }
 
     external fun simpleCompute(): String

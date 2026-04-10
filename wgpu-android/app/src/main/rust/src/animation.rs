@@ -1,9 +1,9 @@
 use wgpu::util::RenderEncoder;
 
 pub mod jni_exports {
-    use crate::animator::{Animate, RotatingTriangleAnimator, VsbmAnimator};
+    use crate::animator::{Animate, RotatingTriangleAnimator, ShadertoyAnimator, VsbmAnimator};
     use crate::{animator, default, AndroidWindow};
-    use jni::objects::{JClass, JObject};
+    use jni::objects::{JClass, JObject, JString};
     use jni::sys::{jfloat, jint, jlong};
     use jni::JNIEnv;
     use log::{debug, error, info, trace};
@@ -37,10 +37,11 @@ pub mod jni_exports {
     #[unsafe(no_mangle)]
     #[allow(non_snake_case)]
     pub extern "system" fn Java_pers_zhc_android_myapplication_JNI_initWgpu(
-        env: JNIEnv,
+        mut env: JNIEnv,
         _c: JClass,
         surface: JObject,
         animation_id: jint,
+        extra_code: JString,
     ) -> jlong {
         info!("initWgpu called");
 
@@ -66,8 +67,23 @@ pub mod jni_exports {
 
             let result = pollster::block_on(async {
                 let result: anyhow::Result<jlong> = try {
+                    let shadertoy_code = if extra_code.is_null() {
+                        None
+                    } else {
+                        Some(
+                            env.get_string(&extra_code)?
+                                .to_str()
+                                .expect("UTF-8 error")
+                                .to_string(),
+                        )
+                    };
+
                     let init_info = create_init_info_from_window(Arc::clone(&android_window));
-                    let animator = create_animator(animation_id, init_info)?;
+                    let animator = create_animator(
+                        animation_id,
+                        init_info,
+                        shadertoy_code.as_ref().map(|x| x.as_str()),
+                    )?;
 
                     let wrapper = Wrapper {
                         animator,
@@ -87,10 +103,15 @@ pub mod jni_exports {
     fn create_animator(
         animation_id: jint,
         init_info: WgpuStateInitInfo,
+        extra_code: Option<&str>,
     ) -> anyhow::Result<Box<dyn Animate>> {
         let animator: Box<dyn Animate> = match animation_id {
             0 => Box::new(RotatingTriangleAnimator::new(init_info)?),
             1 => Box::new(VsbmAnimator::new(init_info)?),
+            2 => Box::new(ShadertoyAnimator::new(
+                init_info,
+                extra_code.expect("Code is missing"),
+            )?),
             _ => {
                 error!("Unknown animation id");
                 panic!();
@@ -160,7 +181,7 @@ pub mod jni_exports {
         let window_arc = wrapper.window;
         let init_info = create_init_info_from_window(Arc::clone(&window_arc));
 
-        let animator = create_animator(animation_id, init_info).unwrap();
+        let animator = create_animator(animation_id, init_info, None).unwrap();
         let wrapper = Wrapper {
             window: window_arc,
             animator,
