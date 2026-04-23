@@ -199,9 +199,14 @@ impl ApplicationHandler for App<'_> {
                     info_state.resize((x.width, x.height));
                 }
                 WindowEvent::RedrawRequested => {
-                    let path_text = format!("{}", self.image_list[self.image_index].display());
-                   info_state.present_text(&path_text);
-                   info_state.surface.window().request_redraw();
+                    let path_text = format!(
+                        "[{}/{}] {}",
+                        self.image_index + 1,
+                        self.image_list.len(),
+                        self.image_list[self.image_index].display()
+                    );
+                    info_state.present_text(&path_text);
+                    info_state.surface.window().request_redraw();
                 }
                 _ => {}
             }
