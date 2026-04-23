@@ -175,6 +175,9 @@ impl ApplicationHandler for App<'_> {
                         Key::Character(x) if x == "s" => {
                             state.uniform_data.no_scale.flip();
                         }
+                        Key::Character(x) if x == "r" => {
+                            state.uniform_data.proportional.flip();
+                        }
                         _ => {}
                     }
                 }
@@ -417,7 +420,9 @@ struct Uniform {
     uv_offset: [f32; 2],
     _pad1: [u32; 2],
     no_scale: WgpuBool,
+    proportional: WgpuBool,
     _pad2: u32,
+    _pad3: u32,
 }
 
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
@@ -441,7 +446,7 @@ impl From<bool> for WgpuBool {
     }
 }
 
-assert_eq_size!(Uniform, [u32; 10]);
+assert_eq_size!(Uniform, [u32; 12]);
 
 struct State {
     device: Device,
@@ -509,8 +514,8 @@ impl State {
             label: None,
             mag_filter: FilterMode::Linear,
             min_filter: FilterMode::Linear,
-            address_mode_u: AddressMode::Repeat,
-            address_mode_v: AddressMode::Repeat,
+            address_mode_u: AddressMode::ClampToEdge,
+            address_mode_v: AddressMode::ClampToEdge,
             ..default!()
         });
 

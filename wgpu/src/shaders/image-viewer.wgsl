@@ -4,7 +4,9 @@ struct Info {
     uv_offset: vec2f,
     _pad1: vec2u,
     no_scale: u32,
+    proportional: u32,
     _pad2: u32,
+    _pad3: u32,
 }
 
 @group(0) @binding(0) var<uniform> info: Info;
@@ -26,16 +28,35 @@ fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
 
 @fragment
 fn fs(@builtin(position) fs_pos: vec4f) -> @location(0) vec4f {
+    const BLACK = vec4f(0, 0, 0, 1);
+
     let s = samp;
 
     let u = fs_pos.x / f32(info.out_size.x);
     let v = fs_pos.y / f32(info.out_size.y);
 
+    var uv = vec2f(u, v);
+    if info.proportional == 1 {
+        let input_aspect = f32(info.image_size.x) / f32(info.image_size.y);
+        let output_aspect = f32(info.out_size.x) / f32(info.out_size.y);
+        if input_aspect > output_aspect {
+            let s = output_aspect / input_aspect;
+            uv.y = (uv.y - 0.5) / s + 0.5;
+        } else {
+            let s = input_aspect / output_aspect;
+            uv.x = (uv.x - 0.5) / s + 0.5;
+        }
+    }
+
     var color: vec4f;
     if info.no_scale == 1 {
         color = textureLoad(texture, vec2u(fs_pos.xy), 0);
     } else {
-        color = textureSample(texture, s, vec2f(u, v) + info.uv_offset);
+        let sampled_uv = uv + info.uv_offset;
+        if sampled_uv.x < 0 || sampled_uv.x > 1 || sampled_uv.y < 0 || sampled_uv.y > 1 {
+            return BLACK;
+        }
+        color = textureSample(texture, s, sampled_uv);
     }
     return color;
 }
