@@ -224,7 +224,7 @@ struct TextRenderer {
 
 impl TextRenderer {
     fn new() -> Self {
-        use cosmic_text::{Attrs, Buffer, Color, FontSystem, Metrics, Shaping, SwashCache};
+        use cosmic_text::{FontSystem, SwashCache};
 
         // A FontSystem provides access to detected system fonts, create one per application
         let mut font_system = FontSystem::new();
@@ -528,7 +528,11 @@ impl State {
             size: init_size,
             bind_group: None,
             uniform,
-            uniform_data: Uniform::zeroed(),
+            uniform_data: {
+                let mut u = Uniform::zeroed();
+                u.proportional = true.into();
+                u
+            },
             sampler,
         };
         state.uniform_data.no_scale = no_scale.into();
