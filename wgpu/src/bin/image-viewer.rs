@@ -1,12 +1,16 @@
 use bytemuck::{bytes_of, cast_slice_mut, Pod, Zeroable};
 use chrono::Local;
 use clap::Parser;
+use cosmic_text::Family;
 use image::GenericImageView;
 use log::{error, info};
 use static_assertions::{assert_eq_size, const_assert_eq};
 use std::ffi::OsStr;
 use std::fs;
+use std::num::NonZeroU32;
+use std::ops::IndexMut;
 use std::path::{Path, PathBuf};
+use std::slice::SliceIndex;
 use std::sync::Arc;
 use wgpu::wgt::strict_assert_eq;
 use wgpu::{
@@ -20,15 +24,55 @@ use wgpu::{
 };
 use wgpu_playground::{default, set_up_logger, wgpu_instance_with_env_backend};
 use winit::application::ApplicationHandler;
+use winit::dpi::LogicalSize;
 use winit::event::{MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey, SmolStr};
 use winit::monitor::MonitorHandle;
-use winit::window::{Fullscreen, Window, WindowId};
+use winit::raw_window_handle::HasDisplayHandle;
+use winit::window::{Fullscreen, Window, WindowAttributes, WindowId};
+
+struct InfoState {
+    surface: softbuffer::Surface<Arc<Window>, Arc<Window>>,
+    size: (u32, u32),
+    text_renderer: TextRenderer,
+}
+
+impl InfoState {
+    fn new(window: Arc<Window>) -> Self {
+        let context = softbuffer::Context::new(Arc::clone(&window)).unwrap();
+        let mut surface = softbuffer::Surface::new(&context, window).unwrap();
+
+        Self {
+            surface,
+            size: (0, 0),
+            text_renderer: TextRenderer::new(),
+        }
+    }
+
+    fn resize(&mut self, size: (u32, u32)) {
+        self.size = size;
+        self.surface
+            .resize(size.0.try_into().unwrap(), size.1.try_into().unwrap())
+            .unwrap();
+    }
+
+    fn present_text(&mut self, text: &str) {
+        if self.size == (0, 0) {
+            return;
+        }
+        let mut buffer = self.surface.buffer_mut().unwrap();
+        buffer.fill(0x000000);
+        self.text_renderer.render(buffer.as_mut(), self.size, text);
+        buffer.present().unwrap();
+    }
+}
 
 struct App<'a> {
     state: Option<State>,
     window: Option<Arc<Window>>,
+    info_window: Option<Arc<Window>>,
+    info_state: Option<InfoState>,
     image_list: Vec<PathBuf>,
     image_index: usize,
     args: &'a Args,
@@ -36,7 +80,11 @@ struct App<'a> {
 
 impl ApplicationHandler for App<'_> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let window = event_loop.create_window(default!()).unwrap();
+        let attributes = WindowAttributes::default()
+            .with_title("WGPU Image Viewer")
+            .with_inner_size(LogicalSize::new(640.0f32, 480.0f32))
+            .with_visible(true);
+        let window = event_loop.create_window(attributes).unwrap();
         let window = Arc::new(window);
 
         let instance = wgpu_instance_with_env_backend();
@@ -54,14 +102,24 @@ impl ApplicationHandler for App<'_> {
 
         self.state = Some(state);
         self.window = Some(Arc::clone(&window));
-
         window.request_redraw();
+
+        let attributes = WindowAttributes::default()
+            .with_title("WGPU Image Viewer")
+            .with_inner_size(LogicalSize::new(640.0f32, 480.0f32))
+            .with_visible(true);
+        let info_window = event_loop.create_window(attributes).unwrap();
+        let info_window = Arc::new(info_window);
+
+        let info_state = InfoState::new(Arc::clone(&info_window));
+        self.info_state = Some(info_state);
+        self.info_window = Some(info_window);
     }
 
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        _window_id: WindowId,
+        window_id: WindowId,
         event: WindowEvent,
     ) {
         let Some(state) = &mut self.state else {
@@ -70,65 +128,155 @@ impl ApplicationHandler for App<'_> {
         let Some(window) = &mut self.window else {
             return;
         };
+        let Some(info_state) = &mut self.info_state else {
+            return;
+        };
+        let info_window_id = info_state.surface.window().id();
+        let main_window_id = window.id();
 
+        if window_id == main_window_id {
+            match &event {
+                WindowEvent::RedrawRequested => {
+                    let render_result = state.render(|| {
+                        window.pre_present_notify();
+                    });
+                    match render_result {
+                        Ok(_) => {}
+                        Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+                            state.reconfigure_surface();
+                        }
+                        Err(e) => {
+                            error!("Render error: {:?}", e);
+                            event_loop.exit();
+                        }
+                    }
+                    window.request_redraw();
+                }
+                WindowEvent::Resized(size) => {
+                    state.resize((size.width as _, size.height as _));
+                }
+                WindowEvent::KeyboardInput { event, .. } => {
+                    if !event.state.is_pressed() {
+                        return;
+                    }
+                    match &event.logical_key {
+                        Key::Character(x) if x == "q" => {
+                            event_loop.exit();
+                        }
+                        Key::Character(x) if x == "f" => {
+                            self.toggle_fullscreen();
+                        }
+                        Key::Named(NamedKey::ArrowLeft) => {
+                            self.previous_image();
+                        }
+                        Key::Named(NamedKey::ArrowRight) => {
+                            self.next_image();
+                        }
+                        Key::Character(x) if x == "s" => {
+                            state.uniform_data.no_scale.flip();
+                        }
+                        _ => {}
+                    }
+                }
+                WindowEvent::MouseWheel {
+                    delta: MouseScrollDelta::LineDelta(_x, y),
+                    ..
+                } if window_id == main_window_id => {
+                    if *y == -1.0 {
+                        self.next_image();
+                    } else if *y == 1.0 {
+                        self.previous_image();
+                    }
+                }
+                _ => {}
+            }
+        } else if window_id == info_window_id {
+            match &event {
+                WindowEvent::Resized(x) => {
+                    info_state.resize((x.width, x.height));
+                }
+                WindowEvent::RedrawRequested => {
+                    let path_text = format!("{}", self.image_list[self.image_index].display());
+                   info_state.present_text(&path_text);
+                   info_state.surface.window().request_redraw();
+                }
+                _ => {}
+            }
+        }
+
+        // common
         match event {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
             }
-            WindowEvent::RedrawRequested => {
-                let render_result = state.render(|| {
-                    window.pre_present_notify();
-                });
-                match render_result {
-                    Ok(_) => {}
-                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
-                        state.reconfigure_surface();
-                    }
-                    Err(e) => {
-                        error!("Render error: {:?}", e);
-                        event_loop.exit();
-                    }
-                }
-                window.request_redraw();
-            }
-            WindowEvent::Resized(size) => {
-                state.resize((size.width as _, size.height as _));
-            }
-            WindowEvent::KeyboardInput { event, .. } => {
-                if !event.state.is_pressed() {
-                    return;
-                }
-                match event.logical_key {
-                    Key::Character(x) if x == "q" => {
-                        event_loop.exit();
-                    }
-                    Key::Character(x) if x == "f" => {
-                        self.toggle_fullscreen();
-                    }
-                    Key::Named(NamedKey::ArrowLeft) => {
-                        self.previous_image();
-                    }
-                    Key::Named(NamedKey::ArrowRight) => {
-                        self.next_image();
-                    }
-                    Key::Character(x) if x == "s" => {
-                        state.uniform_data.no_scale.flip();
-                    }
-                    _ => {}
-                }
-            }
-            WindowEvent::MouseWheel {
-                delta: MouseScrollDelta::LineDelta(_x, y),
-                ..
-            } => {
-                if y == -1.0 {
-                    self.next_image();
-                } else if y == 1.0 {
-                    self.previous_image();
-                }
-            }
             _ => {}
         }
+    }
+}
+
+struct TextRenderer {
+    swash_cache: cosmic_text::SwashCache,
+    font_system: cosmic_text::FontSystem,
+}
+
+impl TextRenderer {
+    fn new() -> Self {
+        use cosmic_text::{Attrs, Buffer, Color, FontSystem, Metrics, Shaping, SwashCache};
+
+        // A FontSystem provides access to detected system fonts, create one per application
+        let mut font_system = FontSystem::new();
+        font_system.db_mut().load_system_fonts();
+
+        // A SwashCache stores rasterized glyphs, create one per application
+        let swash_cache = SwashCache::new();
+        Self {
+            swash_cache,
+            font_system,
+        }
+    }
+
+    fn render(&mut self, out_buffer: &mut [u32], buffer_size: (u32, u32), text: &str) {
+        // Text metrics indicate the font size and line height of a buffer
+        let metrics = cosmic_text::Metrics::new(24.0, 24.0);
+
+        // A Buffer provides shaping and layout for a UTF-8 string, create one per text widget
+        let mut buffer = cosmic_text::Buffer::new(&mut self.font_system, metrics);
+
+        // Borrow buffer together with the font system for more convenient method calls
+        let mut buffer = buffer.borrow_with(&mut self.font_system);
+
+        // Attributes indicate what font to choose
+        let attrs = cosmic_text::Attrs::new().family(Family::Name("Noto Sans CJK SC"));
+
+        // Set size and text
+        buffer.set_size(Some(buffer_size.0 as _), Some(buffer_size.1 as _));
+        buffer.set_text(text, &attrs, cosmic_text::Shaping::Advanced, None);
+
+        // Create a default text color
+        let text_color = cosmic_text::Color::rgb(0xFF, 0xFF, 0xFF);
+
+        // Draw the buffer (for performance, instead use SwashCache directly)
+        buffer.draw(&mut self.swash_cache, text_color, |x, y, w, h, color| {
+            for w_i in 0..w {
+                for h_i in 0..h {
+                    if x < 0 || y < 0 {
+                        continue;
+                    }
+                    let x0 = x as u32 + w_i;
+                    let y0 = y as u32 + h_i;
+                    let index = buffer_size.0 as usize * y0 as usize + x0 as usize;
+                    if let Some(x) = out_buffer.get_mut(index) {
+                        let rgba = color.as_rgba();
+                        let mut c: u32 =
+                            rgba[2] as u32 + ((rgba[1] as u32) << 8) + ((rgba[0] as u32) << 16);
+                        if rgba[3] == 0 {
+                            c = 0;
+                        }
+                        *x = c;
+                    }
+                }
+            }
+        });
     }
 }
 
@@ -254,6 +402,8 @@ fn main() -> anyhow::Result<()> {
         image_list,
         image_index,
         args: &args,
+        info_window: None,
+        info_state: None,
     };
     el.run_app(&mut app)?;
     Ok(())
