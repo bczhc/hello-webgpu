@@ -6,10 +6,12 @@ use image::GenericImageView;
 use log::{error, info};
 use static_assertions::{assert_eq_size, const_assert_eq};
 use std::ffi::OsStr;
-use std::fs;
+use std::{fmt, fs};
+use std::io::Read;
 use std::num::NonZeroU32;
 use std::ops::IndexMut;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::slice::SliceIndex;
 use std::sync::Arc;
 use wgpu::wgt::strict_assert_eq;
@@ -36,6 +38,7 @@ struct InfoState {
     surface: softbuffer::Surface<Arc<Window>, Arc<Window>>,
     size: (u32, u32),
     text_renderer: TextRenderer,
+    text: String,
 }
 
 impl InfoState {
@@ -47,6 +50,7 @@ impl InfoState {
             surface,
             size: (0, 0),
             text_renderer: TextRenderer::new(),
+            text: String::default(),
         }
     }
 
@@ -57,13 +61,13 @@ impl InfoState {
             .unwrap();
     }
 
-    fn present_text(&mut self, text: &str) {
+    fn present_text(&mut self) {
         if self.size == (0, 0) {
             return;
         }
         let mut buffer = self.surface.buffer_mut().unwrap();
         buffer.fill(0x000000);
-        self.text_renderer.render(buffer.as_mut(), self.size, text);
+        self.text_renderer.render(buffer.as_mut(), self.size, &self.text);
         buffer.present().unwrap();
     }
 }
@@ -114,6 +118,8 @@ impl ApplicationHandler for App<'_> {
         let info_state = InfoState::new(Arc::clone(&info_window));
         self.info_state = Some(info_state);
         self.info_window = Some(info_window);
+
+        self.update_info_text();
     }
 
     fn window_event(
@@ -199,13 +205,7 @@ impl ApplicationHandler for App<'_> {
                     info_state.resize((x.width, x.height));
                 }
                 WindowEvent::RedrawRequested => {
-                    let path_text = format!(
-                        "[{}/{}] {}",
-                        self.image_index + 1,
-                        self.image_list.len(),
-                        self.image_list[self.image_index].display()
-                    );
-                    info_state.present_text(&path_text);
+                    info_state.present_text();
                     info_state.surface.window().request_redraw();
                 }
                 _ => {}
@@ -289,6 +289,45 @@ impl TextRenderer {
 }
 
 impl App<'_> {
+    fn update_info_text(&mut self) {
+        let Some(s) = &mut self.info_state else {
+            panic!("Ensure self.info_state is present");
+        };
+        let current_image_path = &self.image_list[self.image_index];
+        let path_info_text = format!(
+            "[{}/{}] {}",
+            self.image_index + 1,
+            self.image_list.len(),
+            current_image_path.display()
+        );
+        s.text = path_info_text;
+
+        if let Some(cmd) = self.args.info_cmd.as_ref() {
+            let result = (|| -> anyhow::Result<String> {
+                let mut child = Command::new(&cmd[0]).args(cmd.iter().skip(1))
+                    .arg(current_image_path.as_os_str())
+                    .stderr(Stdio::inherit())
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::piped())
+                    .spawn()?;
+                let mut stdout = child.stdout.take().unwrap();
+                let mut stdout_string = String::new();
+                stdout.read_to_string(&mut stdout_string)?;
+                let _status = child.wait()?;
+                Ok(stdout_string)
+            })();
+            use fmt::Write;
+            match result {
+                Ok(r) => {
+                    writeln!(&mut s.text, "\n{}\n", r).unwrap();
+                }
+                Err(e) => {
+                    writeln!(&mut s.text, "\nError: {}\n", e).unwrap();
+                }
+            }
+        }
+    }
+
     fn previous_image(&mut self) {
         let Some(ref mut state) = self.state else {
             return;
@@ -299,6 +338,7 @@ impl App<'_> {
             self.image_index -= 1;
         }
         state.set_image(&self.image_list[self.image_index]).unwrap();
+        self.update_info_text();
     }
 
     fn next_image(&mut self) {
@@ -311,6 +351,7 @@ impl App<'_> {
             self.image_index += 1;
         }
         state.set_image(&self.image_list[self.image_index]).unwrap();
+        self.update_info_text();
     }
 
     fn toggle_fullscreen(&self) {
@@ -355,6 +396,8 @@ struct Args {
     /// Do not scale the image (use `textureLoad` in the shader)
     #[arg(short = 's', long)]
     no_scale: bool,
+    #[arg(long, allow_hyphen_values = true, num_args = 1..)]
+    info_cmd: Option<Vec<String>>,
 }
 
 fn main() -> anyhow::Result<()> {
