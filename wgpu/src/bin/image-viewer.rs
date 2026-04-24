@@ -6,7 +6,6 @@ use image::GenericImageView;
 use log::{error, info};
 use static_assertions::{assert_eq_size, const_assert_eq};
 use std::ffi::OsStr;
-use std::{fmt, fs};
 use std::io::Read;
 use std::num::NonZeroU32;
 use std::ops::IndexMut;
@@ -14,6 +13,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::slice::SliceIndex;
 use std::sync::Arc;
+use std::{fmt, fs};
 use wgpu::wgt::strict_assert_eq;
 use wgpu::{
     include_wgsl, AddressMode, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer,
@@ -67,7 +67,8 @@ impl InfoState {
         }
         let mut buffer = self.surface.buffer_mut().unwrap();
         buffer.fill(0x000000);
-        self.text_renderer.render(buffer.as_mut(), self.size, &self.text);
+        self.text_renderer
+            .render(buffer.as_mut(), self.size, &self.text);
         buffer.present().unwrap();
     }
 }
@@ -304,7 +305,8 @@ impl App<'_> {
 
         if let Some(cmd) = self.args.info_cmd.as_ref() {
             let result = (|| -> anyhow::Result<String> {
-                let mut child = Command::new(&cmd[0]).args(cmd.iter().skip(1))
+                let mut child = Command::new(&cmd[0])
+                    .args(cmd.iter().skip(1))
                     .arg(current_image_path.as_os_str())
                     .stderr(Stdio::inherit())
                     .stdin(Stdio::null())
@@ -376,6 +378,23 @@ fn open_image(path: impl AsRef<Path>) -> anyhow::Result<(u32, u32, Vec<u8>)> {
     let img = image::open(path)?;
     let width = img.width();
     let height = img.height();
+
+    // Do not handle large images (> 8192x8192) because the driver complains:
+    // wgpu error: Validation Error
+    //
+    // Caused by:
+    //   In Device::create_texture
+    //     Dimension Y value 10000 exceeds the limit of 8192
+    if width > 8192 || height > 8192 {
+        // texture-missing checkerboard pattern
+        #[rustfmt::skip]
+        return Ok((2, 2, vec![
+            0xff, 0x00, 0xff, 0xff,
+            0x00, 0x00, 0x00, 0xff,
+            0x00, 0x00, 0x00, 0xff,
+            0xff, 0x00, 0xff, 0xff,
+        ]));
+    }
 
     let mut out_buf = Vec::with_capacity(width as usize * height as usize * 3);
     for x in img.pixels() {
@@ -560,8 +579,8 @@ impl State {
 
         let sampler = device.create_sampler(&SamplerDescriptor {
             label: None,
-            mag_filter: FilterMode::Linear,
-            min_filter: FilterMode::Linear,
+            mag_filter: FilterMode::Nearest,
+            min_filter: FilterMode::Nearest,
             address_mode_u: AddressMode::ClampToEdge,
             address_mode_v: AddressMode::ClampToEdge,
             ..default!()
