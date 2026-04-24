@@ -8,7 +8,7 @@ use static_assertions::{assert_eq_size, const_assert_eq};
 use std::ffi::OsStr;
 use std::io::Read;
 use std::num::NonZeroU32;
-use std::ops::IndexMut;
+use std::ops::{Deref, IndexMut};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::slice::SliceIndex;
@@ -103,7 +103,9 @@ impl ApplicationHandler for App<'_> {
             self.args.no_scale,
         )
         .unwrap();
-        state.set_image(&self.image_list[self.image_index]).unwrap();
+        state
+            .update_image(&self.image_list[self.image_index])
+            .unwrap();
 
         self.state = Some(state);
         self.window = Some(Arc::clone(&window));
@@ -171,7 +173,8 @@ impl ApplicationHandler for App<'_> {
                             event_loop.exit();
                         }
                         Key::Character(x) if x == "f" => {
-                            self.toggle_fullscreen();
+                            Self::toggle_fullscreen(window);
+                            state.configure_bind_group();
                         }
                         Key::Named(NamedKey::ArrowLeft) => {
                             self.previous_image();
@@ -181,9 +184,11 @@ impl ApplicationHandler for App<'_> {
                         }
                         Key::Character(x) if x == "s" => {
                             state.uniform_data.no_scale.flip();
+                            state.configure_bind_group();
                         }
                         Key::Character(x) if x == "r" => {
                             state.uniform_data.proportional.flip();
+                            state.configure_bind_group();
                         }
                         _ => {}
                     }
@@ -339,7 +344,9 @@ impl App<'_> {
         } else {
             self.image_index -= 1;
         }
-        state.set_image(&self.image_list[self.image_index]).unwrap();
+        state
+            .update_image(&self.image_list[self.image_index])
+            .unwrap();
         self.update_info_text();
     }
 
@@ -352,14 +359,13 @@ impl App<'_> {
         } else {
             self.image_index += 1;
         }
-        state.set_image(&self.image_list[self.image_index]).unwrap();
+        state
+            .update_image(&self.image_list[self.image_index])
+            .unwrap();
         self.update_info_text();
     }
 
-    fn toggle_fullscreen(&self) {
-        let Some(ref window) = self.window else {
-            return;
-        };
+    fn toggle_fullscreen(window: &Window) {
         let state = window.fullscreen();
         match state {
             None => {
@@ -505,6 +511,13 @@ impl WgpuBool {
         };
         *self = Self(new_value);
     }
+
+    fn to_bool(&self) -> bool {
+        match self.0 {
+            0 => false,
+            _ => true,
+        }
+    }
 }
 
 impl From<bool> for WgpuBool {
@@ -525,7 +538,10 @@ struct State {
     bind_group: Option<wgpu::BindGroup>,
     uniform: Buffer,
     uniform_data: Uniform,
-    sampler: wgpu::Sampler,
+    nearest_sampler: wgpu::Sampler,
+    linear_sampler: wgpu::Sampler,
+    current_image_size: (u32, u32),
+    current_image_texture: Option<wgpu::Texture>,
 }
 
 impl State {
@@ -577,10 +593,18 @@ impl State {
             mapped_at_creation: false,
         });
 
-        let sampler = device.create_sampler(&SamplerDescriptor {
+        let nearest_sampler = device.create_sampler(&SamplerDescriptor {
             label: None,
             mag_filter: FilterMode::Nearest,
             min_filter: FilterMode::Nearest,
+            address_mode_u: AddressMode::ClampToEdge,
+            address_mode_v: AddressMode::ClampToEdge,
+            ..default!()
+        });
+        let linear_sampler = device.create_sampler(&SamplerDescriptor {
+            label: None,
+            mag_filter: FilterMode::Linear,
+            min_filter: FilterMode::Linear,
             address_mode_u: AddressMode::ClampToEdge,
             address_mode_v: AddressMode::ClampToEdge,
             ..default!()
@@ -600,7 +624,10 @@ impl State {
                 u.proportional = true.into();
                 u
             },
-            sampler,
+            nearest_sampler,
+            linear_sampler,
+            current_image_size: (0, 0),
+            current_image_texture: None,
         };
         state.uniform_data.no_scale = no_scale.into();
         state.write_uniform();
@@ -610,7 +637,7 @@ impl State {
         Ok(state)
     }
 
-    fn set_image(&mut self, file: impl AsRef<Path>) -> anyhow::Result<()> {
+    fn update_image(&mut self, file: impl AsRef<Path>) -> anyhow::Result<()> {
         let file = file.as_ref();
         info!("Set image: {}", file.display());
         let (width, height, image_buf) = open_image(file)?;
@@ -649,10 +676,15 @@ impl State {
                 depth_or_array_layers: 1,
             },
         );
-
+        self.current_image_texture = Some(texture);
+        self.current_image_size = (width, height);
         self.uniform_data.image_size = [width, height];
         self.write_uniform();
+        self.configure_bind_group();
+        Ok(())
+    }
 
+    fn configure_bind_group(&mut self) {
         let bind_group = self.device.create_bind_group(&BindGroupDescriptor {
             label: None,
             layout: &self.pipeline.get_bind_group_layout(0),
@@ -663,20 +695,29 @@ impl State {
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: BindingResource::Sampler(&self.sampler),
+                    resource: BindingResource::Sampler(
+                        if (self.current_image_size.0 <= self.size.0
+                            && self.current_image_size.1 <= self.size.1)
+                            || self.uniform_data.no_scale.to_bool()
+                        {
+                            &self.nearest_sampler
+                        } else {
+                            &self.linear_sampler
+                        },
+                    ),
                 },
                 BindGroupEntry {
                     binding: 2,
                     resource: BindingResource::TextureView(
-                        &texture.create_view(&TextureViewDescriptor::default()),
+                        &self
+                            .current_image_texture.as_ref()
+                            .expect("Current image texture is required")
+                            .create_view(&TextureViewDescriptor::default()),
                     ),
                 },
             ],
         });
-
         self.bind_group = Some(bind_group);
-
-        Ok(())
     }
 
     fn write_uniform(&self) {
