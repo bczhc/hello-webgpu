@@ -18,4 +18,5 @@ export const demos = [
     'hello-triangle-msaa',
     'bind-group-layout',
     'wgsl-playground',
+    'transform',
 ];
