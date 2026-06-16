@@ -1,9 +1,9 @@
 #![feature(decl_macro)]
 
+use anyhow::anyhow;
 use bytemuck::{cast_slice, cast_slice_mut};
 use std::process::exit;
 use std::time::Instant;
-use anyhow::anyhow;
 use tokio::sync::oneshot;
 use wgpu::wgt::PollType;
 use wgpu::{
@@ -178,13 +178,13 @@ impl State {
         rx.await??;
 
         to[..(self.map_read_buffer.size() as usize)]
-            .copy_from_slice(cast_slice(&*self.map_read_buffer.get_mapped_range(..)));
+            .copy_from_slice(cast_slice(&self.map_read_buffer.get_mapped_range(..)));
         self.map_read_buffer.unmap();
         Ok(())
     }
 }
 
-fn add_big_int(data: &mut [u8; 32], mut n: u32) {
+fn add_big_int(data: &mut [u8; 32], n: u32) {
     let mut carry = n;
 
     for byte in data.iter_mut() {
@@ -249,7 +249,7 @@ fn wgsl_source(difficulty_bits: u32) -> String {
         .collect::<Vec<_>>();
     source.remove(0);
     let generated = generate_check_difficulty_wgsl(difficulty_bits);
-    for x in generated.lines().into_iter().rev() {
+    for x in generated.lines().rev() {
         source.insert(0, x);
     }
     source.join("\n")
@@ -277,7 +277,7 @@ async fn main() -> anyhow::Result<()> {
 
     println!("Args: {:?}", args);
 
-    let arg_start = hex::decode(args.start.as_ref().map(|x| x.as_str()).unwrap_or_default())?;
+    let arg_start = hex::decode(args.start.as_deref().unwrap_or_default())?;
     if arg_start.len() > 32 {
         return Err(anyhow!("Length of `start` must be <= 32"));
     }

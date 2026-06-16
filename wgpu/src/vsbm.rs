@@ -1,7 +1,7 @@
-use crate::{default, WgpuStateInitInfo};
+use crate::{WgpuStateInitInfo, default};
 use bytemuck::{Pod, Zeroable};
 use std::iter;
-use wgpu::{PipelineCompilationOptions, TextureFormat};
+use wgpu::{CurrentSurfaceTexture, PipelineCompilationOptions, TextureFormat};
 
 // --- Uniform 数据结构 (必须符合 WGSL 的 16 字节对齐) ---
 #[repr(C)]
@@ -70,7 +70,7 @@ impl State {
             .unwrap();
 
         let surface_caps = surface.get_capabilities(&adapter);
-        
+
         // Do not use srgb suffix. This makes wgpu think all colors we give are already in a
         // non-linear sRGB space and do not do an automatic gamma correction.
         let mut texture_format = TextureFormat::Bgra8Unorm;
@@ -118,7 +118,7 @@ impl State {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&uniform_bind_group_layout],
+                bind_group_layouts: &[Some(&uniform_bind_group_layout)],
                 immediate_size: 0,
             });
 
@@ -220,8 +220,26 @@ impl State {
             .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
     }
 
-    pub fn render(&self, before_submit_callback: impl FnOnce()) -> Result<(), wgpu::SurfaceError> {
-        let surface_texture = self.surface.get_current_texture()?;
+    pub fn render(&self, before_submit_callback: impl FnOnce()) {
+        let surface_texture = match self.surface.get_current_texture() {
+            CurrentSurfaceTexture::Success(texture) => texture,
+            CurrentSurfaceTexture::Suboptimal(texture) => {
+                log::info!("Suboptimal surface texture, reconfiguring...");
+                self.configure_surface();
+                texture
+            }
+            CurrentSurfaceTexture::Timeout | CurrentSurfaceTexture::Occluded => {
+                return;
+            }
+            CurrentSurfaceTexture::Outdated | CurrentSurfaceTexture::Lost => {
+                self.configure_surface();
+                return;
+            }
+            CurrentSurfaceTexture::Validation => {
+                log::error!("Validation error in get_current_texture");
+                return;
+            }
+        };
 
         let texture_view = surface_texture
             .texture
@@ -276,6 +294,5 @@ impl State {
         before_submit_callback();
         self.queue.submit(iter::once(encoder.finish()));
         surface_texture.present();
-        Ok(())
     }
 }

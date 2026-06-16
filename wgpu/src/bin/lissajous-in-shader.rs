@@ -1,11 +1,17 @@
+use log::error;
 use palette::{FromColor, Srgb};
 use std::env;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use log::error;
-use wgpu::util::RenderEncoder;
 use wgpu::VertexFormat::Float32x2;
-use wgpu::{include_wgsl, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferDescriptor, BufferUsages, Color, ColorTargetState, Device, FragmentState, Instance, PrimitiveState, PrimitiveTopology, RenderPipeline, RenderPipelineDescriptor, ShaderModule, SurfaceError, SurfaceTexture, VertexAttribute, VertexBufferLayout, VertexState};
+use wgpu::util::RenderEncoder;
+use wgpu::{
+    BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferDescriptor, BufferUsages,
+    Color, ColorTargetState, CurrentSurfaceTexture, Device, FragmentState,
+    PrimitiveState, PrimitiveTopology, RenderPipeline, RenderPipelineDescriptor, ShaderModule,
+    VertexAttribute, VertexBufferLayout, VertexState, include_wgsl,
+};
+use wgpu_playground::wgpu_instance_with_env_backend;
 use winit::event::{ElementState, MouseButton};
 use winit::keyboard::{Key, NamedKey};
 use winit::{
@@ -14,7 +20,6 @@ use winit::{
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop, OwnedDisplayHandle},
     window::{Window, WindowId},
 };
-use wgpu_playground::wgpu_instance_with_env_backend;
 
 struct State {
     elapsed: PausableTimeElapse,
@@ -32,7 +37,7 @@ struct State {
 }
 
 impl State {
-    async fn new(display: OwnedDisplayHandle, window: Arc<Window>) -> State {
+    async fn new(_display: OwnedDisplayHandle, window: Arc<Window>) -> State {
         // let instance = wgpu::Instance::new(
         //     wgpu::InstanceDescriptor::default().with_display_handle(Box::new(display)),
         // );
@@ -53,7 +58,8 @@ impl State {
 
         let surface_format = cap.formats[0];
 
-        let shader_module = device.create_shader_module(include_wgsl!("../shaders/lissajous-in-shader.wgsl"));
+        let shader_module =
+            device.create_shader_module(include_wgsl!("../shaders/lissajous-in-shader.wgsl"));
 
         let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
             vertex: VertexState {
@@ -127,13 +133,13 @@ impl State {
     }
 
     fn create_vertex_buffer(device: &Device, size: u64) -> Buffer {
-        let buffer = device.create_buffer(&BufferDescriptor {
+        
+        device.create_buffer(&BufferDescriptor {
             label: None,
             size,
             usage: BufferUsages::COPY_DST | BufferUsages::VERTEX,
             mapped_at_creation: false,
-        });
-        buffer
+        })
     }
 
     fn get_window(&self) -> &Window {
@@ -164,16 +170,21 @@ impl State {
 
     fn render(&mut self) {
         // Create texture view
-        let surface_texture = match self
-            .surface
-            .get_current_texture() {
-            Ok(x) => x,
-            Err(SurfaceError::Outdated) => {
+        let surface_texture = match self.surface.get_current_texture() {
+            CurrentSurfaceTexture::Success(texture) => texture,
+            CurrentSurfaceTexture::Suboptimal(texture) => {
+                self.configure_surface();
+                texture
+            }
+            CurrentSurfaceTexture::Timeout | CurrentSurfaceTexture::Occluded => {
+                return;
+            }
+            CurrentSurfaceTexture::Outdated | CurrentSurfaceTexture::Lost => {
                 self.configure_surface();
                 return;
             }
-            Err(e) => {
-                error!("Failed to acquire next swapchain texture: {:?}", e);
+            CurrentSurfaceTexture::Validation => {
+                error!("Validation error in get_current_texture");
                 return;
             }
         };
@@ -295,7 +306,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 println!("{:?}", event);
-                
+
                 if event.logical_key == Key::Named(NamedKey::Space)
                     && event.state == ElementState::Pressed
                 {
@@ -307,12 +318,11 @@ impl ApplicationHandler for App {
                 state: e_state,
                 button,
                 ..
-            } => {
-                if e_state == ElementState::Pressed && button == MouseButton::Left {
+            }
+                if e_state == ElementState::Pressed && button == MouseButton::Left => {
                     // click; update the vertex colors
                     state.render();
                 }
-            }
             _ => {}
         }
     }

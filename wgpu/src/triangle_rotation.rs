@@ -1,7 +1,12 @@
 use crate::{ColorExt, WgpuStateInitInfo};
 use bytemuck::checked::cast_slice;
 use log::{error, info};
-use wgpu::{include_wgsl, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferDescriptor, BufferUsages, Color, ColorTargetState, Device, FragmentState, Queue, RenderPipeline, RenderPipelineDescriptor, SurfaceError, SurfaceTexture, VertexAttribute, VertexBufferLayout, VertexFormat, VertexState};
+use wgpu::{
+    BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferDescriptor, BufferUsages,
+    Color, ColorTargetState, CurrentSurfaceTexture, Device, FragmentState, Queue, RenderPipeline,
+    RenderPipelineDescriptor, VertexAttribute, VertexBufferLayout, VertexFormat, VertexState,
+    include_wgsl,
+};
 
 pub struct State {
     device: wgpu::Device,
@@ -17,7 +22,7 @@ pub struct State {
 #[rustfmt::skip]
 static VERTICES_DATA: [f32; 15] = {
     // 使用 f32 常量计算
-    const SQRT_3: f32 = 1.732050808;  // √3
+    const SQRT_3: f32 = 1.732_050_8;  // √3
     const SIDE: f32 = 1.0;
     const HALF_SIDE: f32 = SIDE / 2.0;
     const HEIGHT: f32 = SQRT_3 * HALF_SIDE;  // √3/2 * 边长
@@ -101,7 +106,7 @@ impl State {
         let vertex_buffer = Self::create_vertex_buffer(&device, &queue, &VERTICES_DATA);
         let buffer = device.create_buffer(&BufferDescriptor {
             label: None,
-            size: 1 * 4,
+            size: 4,
             usage: BufferUsages::COPY_DST | BufferUsages::UNIFORM,
             mapped_at_creation: false,
         });
@@ -166,14 +171,22 @@ impl State {
         info!("Render; size: {:?}", self.size);
 
         // Create texture view
-        let surface_texture = self
-            .surface
-            .get_current_texture();
-        let surface_texture = match surface_texture {
-            Ok(x) => {x}
-            Err(e) => {
-                error!("Can't acquire the next swapchain texture: {:?}. Reconfiguring...", e);
+        let surface_texture = match self.surface.get_current_texture() {
+            CurrentSurfaceTexture::Success(texture) => texture,
+            CurrentSurfaceTexture::Suboptimal(texture) => {
+                info!("Suboptimal surface texture, reconfiguring...");
                 self.configure_surface();
+                texture
+            }
+            CurrentSurfaceTexture::Timeout | CurrentSurfaceTexture::Occluded => {
+                return;
+            }
+            CurrentSurfaceTexture::Outdated | CurrentSurfaceTexture::Lost => {
+                self.configure_surface();
+                return;
+            }
+            CurrentSurfaceTexture::Validation => {
+                error!("Validation error in get_current_texture");
                 return;
             }
         };

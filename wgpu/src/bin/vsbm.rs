@@ -10,7 +10,7 @@ use clap::Parser;
 use std::env;
 use std::sync::Arc;
 use wgpu_playground::vsbm::{Config, State};
-use wgpu_playground::{default, wgpu_instance_with_env_backend, WgpuStateInitInfo};
+use wgpu_playground::{WgpuStateInitInfo, default, wgpu_instance_with_env_backend};
 use winit::application::ApplicationHandler;
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
@@ -47,7 +47,9 @@ impl ApplicationHandler for App {
                 // let size = window.inner_size();
                 let size = (1024, 1024);
                 let instance = wgpu_instance_with_env_backend();
-                let surface = instance.create_surface(Arc::clone(&window))?;
+                let surface = instance
+                    .create_surface(Arc::clone(&window))
+                    .map_err(anyhow::Error::msg)?;
                 let state = State::new(
                     WgpuStateInitInfo {
                         instance,
@@ -72,27 +74,20 @@ impl ApplicationHandler for App {
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        window_id: WindowId,
+        _window_id: WindowId,
         event: WindowEvent,
     ) {
         let state = self.state.as_mut().unwrap();
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Resized(physical_size) => state.resize((1024, 1024)),
+            WindowEvent::Resized(_physical_size) => state.resize((1024, 1024)),
             WindowEvent::RedrawRequested => {
                 let Some(w) = &self.window else {
                     return;
                 };
 
                 state.update();
-                match state.render(|| w.pre_present_notify()) {
-                    Ok(_) => {}
-                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
-                        state.configure_surface()
-                    }
-                    Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
-                    Err(e) => eprintln!("{:?}", e),
-                }
+                state.render(|| w.pre_present_notify());
 
                 // print the FPS
                 let ts = Local::now().timestamp_nanos_opt().unwrap() as u64;

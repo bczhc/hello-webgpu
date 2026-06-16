@@ -1,8 +1,8 @@
 use num_format::{Locale, ToFormattedString};
 use rayon::prelude::*;
 use sha2::{Digest, Sha256};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 const INPUT_SIZE: usize = 32;
@@ -66,20 +66,19 @@ fn main() {
 
                 // 计算 SHA256
                 let mut hasher = Sha256::new();
-                hasher.update(&local_input);
+                hasher.update(local_input);
                 let result = hasher.finalize();
 
                 // --- 新增：累加计数 ---
                 hash_count.fetch_add(1, Ordering::Relaxed);
 
-                if result[0] == 0 && result[1] == 0 && result[2] == 0 && result[3] >> 4 == 0 {
-                    if !found.swap(true, Ordering::SeqCst) {
+                if result[0] == 0 && result[1] == 0 && result[2] == 0 && result[3] >> 4 == 0
+                    && !found.swap(true, Ordering::SeqCst) {
                         println!("\n找到匹配!");
                         println!("输入 (hex): {}", hex::encode(local_input));
                         println!("哈希 (hex): {}", hex::encode(result));
                         std::process::exit(0);
                     }
-                }
             });
 
             // 更新基础输入，进入下一批次
@@ -88,7 +87,7 @@ fn main() {
     });
 }
 
-fn add_big_int(data: &mut [u8; 32], mut n: u32) {
+fn add_big_int(data: &mut [u8; 32], n: u32) {
     let mut carry = n;
 
     for byte in data.iter_mut() {

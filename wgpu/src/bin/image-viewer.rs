@@ -1,37 +1,31 @@
-use bytemuck::{bytes_of, cast_slice_mut, Pod, Zeroable};
-use chrono::Local;
+use bytemuck::{Pod, Zeroable, bytes_of};
 use clap::Parser;
 use cosmic_text::Family;
 use image::GenericImageView;
 use log::{error, info};
-use static_assertions::{assert_eq_size, const_assert_eq};
+use static_assertions::assert_eq_size;
 use std::ffi::OsStr;
 use std::io::Read;
-use std::num::NonZeroU32;
-use std::ops::{Deref, IndexMut};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::slice::SliceIndex;
 use std::sync::Arc;
 use std::{fmt, fs};
-use wgpu::wgt::strict_assert_eq;
 use wgpu::{
-    include_wgsl, AddressMode, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer,
-    BufferDescriptor, BufferUsages, ColorTargetState, Device, Extent3d, FilterMode, FragmentState, Instance,
-    LoadOp, LoadOpDontCare, Operations, RenderPassColorAttachment, RenderPassDescriptor,
-    RenderPipeline, RenderPipelineDescriptor, SamplerDescriptor, StoreOp, Surface,
-    SurfaceConfiguration, TexelCopyBufferLayout, TexelCopyTextureInfo, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor, TextureViewDimension,
-    VertexState,
+    AddressMode, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferDescriptor,
+    BufferUsages, ColorTargetState, Device, Extent3d, FilterMode, FragmentState, Instance, LoadOp,
+    LoadOpDontCare, Operations, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
+    RenderPipelineDescriptor, SamplerDescriptor, StoreOp, Surface, SurfaceConfiguration,
+    TexelCopyBufferLayout, TexelCopyTextureInfo, TextureDescriptor, TextureDimension,
+    TextureFormat, TextureUsages, TextureViewDescriptor, TextureViewDimension, VertexState,
+    include_wgsl,
 };
 use wgpu_playground::{default, set_up_logger, wgpu_instance_with_env_backend};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::keyboard::{Key, NamedKey, SmolStr};
-use winit::monitor::MonitorHandle;
-use winit::raw_window_handle::HasDisplayHandle;
+use winit::keyboard::{Key, NamedKey};
 use winit::window::{Fullscreen, Window, WindowAttributes, WindowId};
 
 struct InfoState {
@@ -44,7 +38,7 @@ struct InfoState {
 impl InfoState {
     fn new(window: Arc<Window>) -> Self {
         let context = softbuffer::Context::new(Arc::clone(&window)).unwrap();
-        let mut surface = softbuffer::Surface::new(&context, window).unwrap();
+        let surface = softbuffer::Surface::new(&context, window).unwrap();
 
         Self {
             surface,
@@ -146,19 +140,9 @@ impl ApplicationHandler for App<'_> {
         if window_id == main_window_id {
             match &event {
                 WindowEvent::RedrawRequested => {
-                    let render_result = state.render(|| {
+                    state.render(|| {
                         window.pre_present_notify();
                     });
-                    match render_result {
-                        Ok(_) => {}
-                        Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
-                            state.reconfigure_surface();
-                        }
-                        Err(e) => {
-                            error!("Render error: {:?}", e);
-                            event_loop.exit();
-                        }
-                    }
                     window.request_redraw();
                 }
                 WindowEvent::Resized(size) => {
@@ -219,11 +203,8 @@ impl ApplicationHandler for App<'_> {
         }
 
         // common
-        match event {
-            WindowEvent::CloseRequested => {
-                event_loop.exit();
-            }
-            _ => {}
+        if event == WindowEvent::CloseRequested {
+            event_loop.exit();
         }
     }
 }
@@ -667,7 +648,7 @@ impl State {
             &image_buf,
             TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(width * 4 * 1),
+                bytes_per_row: Some(width * 4 ),
                 rows_per_image: None,
             },
             Extent3d {
@@ -710,7 +691,8 @@ impl State {
                     binding: 2,
                     resource: BindingResource::TextureView(
                         &self
-                            .current_image_texture.as_ref()
+                            .current_image_texture
+                            .as_ref()
                             .expect("Current image texture is required")
                             .create_view(&TextureViewDescriptor::default()),
                     ),
@@ -750,10 +732,10 @@ impl State {
         );
     }
 
-    fn render(&mut self, pre_present_op: impl FnOnce()) -> Result<(), wgpu::SurfaceError> {
+    fn render(&mut self, pre_present_op: impl FnOnce()) {
         if self.bind_group.is_none() {
-            // The image texture is not present. Skip this rendering.l
-            return Ok(());
+            // The image texture is not present. Skip this rendering.
+            return;
         }
 
         self.uniform_data.out_size = self.size.into();
@@ -765,7 +747,24 @@ impl State {
 
         let mut encoder = self.device.create_command_encoder(&default!());
 
-        let texture = self.surface.get_current_texture()?;
+        let texture = match self.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(texture) => texture,
+            wgpu::CurrentSurfaceTexture::Suboptimal(texture) => {
+                self.reconfigure_surface();
+                texture
+            }
+            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+                return;
+            }
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                self.reconfigure_surface();
+                return;
+            }
+            wgpu::CurrentSurfaceTexture::Validation => {
+                error!("Validation error in get_current_texture");
+                return;
+            }
+        };
         let texture_view = texture.texture.create_view(&TextureViewDescriptor {
             label: None,
             format: Some(self.surface_format),
@@ -804,7 +803,5 @@ impl State {
         self.queue.submit([command_buffer]);
         pre_present_op();
         texture.present();
-
-        Ok(())
     }
 }

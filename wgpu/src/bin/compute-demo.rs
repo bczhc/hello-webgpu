@@ -6,7 +6,11 @@ use rand::Rng;
 use std::time::Instant;
 use tokio::sync::oneshot;
 use wgpu::wgt::PollType;
-use wgpu::{include_wgsl, BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferBinding, BufferDescriptor, BufferUsages, ComputePipeline, ComputePipelineDescriptor, Device, Instance, MapMode, PipelineCompilationOptions, Queue};
+use wgpu::{
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferBinding,
+    BufferDescriptor, BufferUsages, ComputePipeline, ComputePipelineDescriptor, Device,
+    MapMode, PipelineCompilationOptions, Queue, include_wgsl,
+};
 use wgpu_playground::{set_up_logger, wgpu_instance_with_env_backend};
 
 macro default() {
@@ -30,16 +34,15 @@ impl State {
         let adapter = instance.request_adapter(&default!()).await?;
         let (device, queue) = adapter.request_device(&default!()).await?;
 
-        let shader_module = device.create_shader_module(include_wgsl!("../shaders/compute-demo.wgsl"));
+        let shader_module =
+            device.create_shader_module(include_wgsl!("../shaders/compute-demo.wgsl"));
         let pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor {
             label: None,
             layout: None,
             module: &shader_module,
             entry_point: None,
             compilation_options: PipelineCompilationOptions {
-                constants: &[
-                    ("WORKGROUP_SIZE", WORKGROUP_SIZE as f64)
-                ],
+                constants: &[("WORKGROUP_SIZE", WORKGROUP_SIZE as f64)],
                 zero_initialize_workgroup_memory: false,
             },
             cache: None,
@@ -112,7 +115,7 @@ impl State {
         rx.await??;
 
         to[..(self.result_buffer.size() as usize)]
-            .copy_from_slice(cast_slice(&*self.result_buffer.get_mapped_range(..)));
+            .copy_from_slice(cast_slice(&self.result_buffer.get_mapped_range(..)));
         self.result_buffer.unmap();
         Ok(())
     }
@@ -120,7 +123,7 @@ impl State {
 
 async fn boring_stress_test() -> anyhow::Result<()> {
     const DATA_LENGTH: usize = 100_000;
-    const WORKGROUP_COUNT: usize = (DATA_LENGTH + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE; /* =ceil(DATA_LENGTH / WORKGROUP_SIZE) */
+    const WORKGROUP_COUNT: usize = DATA_LENGTH.div_ceil(WORKGROUP_SIZE); /* =ceil(DATA_LENGTH / WORKGROUP_SIZE) */
     let mut input = vec![0_f32; DATA_LENGTH];
     let mut result = vec![0_f32; DATA_LENGTH];
     let state = State::new(input.len() as u64 * 4).await?;

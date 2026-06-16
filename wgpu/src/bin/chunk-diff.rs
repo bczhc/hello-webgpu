@@ -2,20 +2,18 @@
 #![feature(file_buffered)]
 
 /// GPU takes more time for this specific memory-bound task.
-
 use bytemuck::cast_slice;
+use rand::TryRngCore;
+use rand::rngs::OsRng;
 use std::fs::File;
-use std::io::Read;
 use std::path::Path;
 use std::time::Instant;
-use rand::rngs::OsRng;
-use rand::TryRngCore;
 use tokio::sync::oneshot;
 use wgpu::wgt::PollType;
 use wgpu::{
-    include_wgsl, BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer,
-    BufferBinding, BufferDescriptor, BufferUsages, ComputePipeline, ComputePipelineDescriptor, Device,
-    Instance, MapMode, PipelineCompilationOptions, Queue,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferBinding,
+    BufferDescriptor, BufferUsages, ComputePipeline, ComputePipelineDescriptor, Device,
+    MapMode, PipelineCompilationOptions, Queue, include_wgsl,
 };
 use wgpu_playground::wgpu_instance_with_env_backend;
 
@@ -39,7 +37,7 @@ struct State {
 
 impl State {
     async fn new(pix_buf_len: u64) -> anyhow::Result<Self> {
-        if pix_buf_len % 4 != 0 {
+        if !pix_buf_len.is_multiple_of(4) {
             return Err(anyhow::anyhow!("pix_buf_len requires a multiple of 4"));
         }
         let instance = wgpu_instance_with_env_backend();
@@ -123,8 +121,8 @@ impl State {
     }
 
     fn work(&self) {
-        let dispatch_count = (self.pix_buf_len / 4 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
-        let dispatch_count = (dispatch_count + WORK_NUM_PER_THREAD - 1) / WORK_NUM_PER_THREAD;
+        let dispatch_count = (self.pix_buf_len / 4).div_ceil(WORKGROUP_SIZE);
+        let dispatch_count = dispatch_count.div_ceil(WORK_NUM_PER_THREAD);
         let dispatch_count: u32 = dispatch_count.try_into().unwrap();
         let mut encoder = self.device.create_command_encoder(&default!());
 
@@ -152,7 +150,7 @@ impl State {
         rx.await??;
 
         to[..(self.result_buffer.size() as usize)]
-            .copy_from_slice(cast_slice(&*self.result_buffer.get_mapped_range(..)));
+            .copy_from_slice(cast_slice(&self.result_buffer.get_mapped_range(..)));
         self.result_buffer.unmap();
         Ok(())
     }
@@ -208,6 +206,6 @@ fn diff_chunk_owned(base_buf: &[u8], new_buf: &[u8]) -> Vec<u8> {
     base_cloned
 }
 
-fn read_pix_file(path: impl AsRef<Path>) ->anyhow::Result<Vec<u8>> {
+fn read_pix_file(path: impl AsRef<Path>) -> anyhow::Result<Vec<u8>> {
     Ok(zstd::decode_all(File::open_buffered(path)?)?)
 }

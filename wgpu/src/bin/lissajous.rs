@@ -1,20 +1,25 @@
+use log::error;
 use std::env;
 use std::f32::consts::PI;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use log::error;
-use wgpu::util::RenderEncoder;
 use wgpu::VertexFormat::Float32x2;
-use wgpu::{include_wgsl, Buffer, BufferDescriptor, BufferUsages, Color, ColorTargetState, Device, FragmentState, Instance, PrimitiveState, PrimitiveTopology, RenderPipeline, RenderPipelineDescriptor, ShaderModule, SurfaceError, VertexAttribute, VertexBufferLayout, VertexState};
+use wgpu::util::RenderEncoder;
+use wgpu::{
+    Buffer, BufferDescriptor, BufferUsages, Color, ColorTargetState, CurrentSurfaceTexture, Device,
+    FragmentState, PrimitiveState, PrimitiveTopology, RenderPipeline,
+    RenderPipelineDescriptor, ShaderModule, VertexAttribute, VertexBufferLayout, VertexState,
+    include_wgsl,
+};
+use wgpu_playground::wgpu_instance_with_env_backend;
 use winit::event::{ElementState, MouseButton};
+use winit::keyboard::{Key, NamedKey};
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop, OwnedDisplayHandle},
     window::{Window, WindowId},
 };
-use winit::keyboard::{Key, NamedKey, PhysicalKey};
-use wgpu_playground::wgpu_instance_with_env_backend;
 
 struct State {
     elapsed: PausableTimeElapse,
@@ -30,7 +35,7 @@ struct State {
 }
 
 impl State {
-    async fn new(display: OwnedDisplayHandle, window: Arc<Window>) -> State {
+    async fn new(_display: OwnedDisplayHandle, window: Arc<Window>) -> State {
         // let instance = wgpu::Instance::new(
         //     wgpu::InstanceDescriptor::default().with_display_handle(Box::new(display)),
         // );
@@ -117,13 +122,13 @@ impl State {
     }
 
     fn create_vertex_buffer(device: &Device, size: u64) -> Buffer {
-        let buffer = device.create_buffer(&BufferDescriptor {
+        
+        device.create_buffer(&BufferDescriptor {
             label: None,
             size,
             usage: BufferUsages::COPY_DST | BufferUsages::VERTEX,
             mapped_at_creation: false,
-        });
-        buffer
+        })
     }
 
     fn get_window(&self) -> &Window {
@@ -154,16 +159,21 @@ impl State {
 
     fn render(&mut self) {
         // Create texture view
-        let surface_texture = match self
-            .surface
-            .get_current_texture() {
-            Ok(x) => x,
-            Err(SurfaceError::Outdated) => {
+        let surface_texture = match self.surface.get_current_texture() {
+            CurrentSurfaceTexture::Success(texture) => texture,
+            CurrentSurfaceTexture::Suboptimal(texture) => {
+                self.configure_surface();
+                texture
+            }
+            CurrentSurfaceTexture::Timeout | CurrentSurfaceTexture::Occluded => {
+                return;
+            }
+            CurrentSurfaceTexture::Outdated | CurrentSurfaceTexture::Lost => {
                 self.configure_surface();
                 return;
             }
-            Err(e) => {
-                error!("Failed to acquire next swapchain texture: {:?}", e);
+            CurrentSurfaceTexture::Validation => {
+                error!("Validation error in get_current_texture");
                 return;
             }
         };
@@ -207,11 +217,8 @@ impl State {
             buf[i * 2] = x;
             buf[i * 2 + 1] = y;
         }
-        self.queue.write_buffer(
-            &self.vertex_buffer,
-            0,
-            bytemuck::cast_slice(&buf),
-        );
+        self.queue
+            .write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&buf));
         pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         pass.set_pipeline(&self.pipeline);
         pass.draw(0..(SEGMENTS as u32), 0..1);
@@ -265,22 +272,22 @@ impl ApplicationHandler for App {
                 // here as this event is always followed up by redraw request.
                 state.resize(size);
             }
-            WindowEvent::KeyboardInput {event, ..} => {
-                if event.logical_key == Key::Named(NamedKey::Space) && event.state == ElementState::Pressed {
+            WindowEvent::KeyboardInput { event, .. }
+                if event.logical_key == Key::Named(NamedKey::Space)
+                    && event.state == ElementState::Pressed
+                => {
                     // switch paused state
                     state.elapsed.switch_pause();
                 }
-            }
             WindowEvent::MouseInput {
                 state: e_state,
                 button,
                 ..
-            } => {
-                if e_state == ElementState::Pressed && button == MouseButton::Left {
+            }
+                if e_state == ElementState::Pressed && button == MouseButton::Left => {
                     // click; update the vertex colors
                     state.render();
                 }
-            }
             _ => {}
         }
     }

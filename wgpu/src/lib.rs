@@ -5,7 +5,7 @@ pub mod vsbm;
 
 use std::env;
 use std::time::{Duration, Instant};
-use wgpu::{Backends, Color, Instance, InstanceDescriptor, Surface};
+use wgpu::{Backends, Color, Instance, Surface};
 
 pub fn set_up_logger() {
     unsafe {
@@ -19,11 +19,10 @@ pub macro default() {
 }
 
 pub fn wgpu_instance_with_env_backend() -> Instance {
-    let instance = Instance::new(&InstanceDescriptor {
-        backends: Backends::from_env().unwrap_or(default!()),
-        ..default!()
-    });
-    instance
+    let backends = Backends::from_env().unwrap_or(Backends::all());
+    let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+    desc.backends = backends;
+    Instance::new(desc)
 }
 
 pub trait ColorExt {
@@ -58,6 +57,12 @@ pub struct WgpuStateInitInfo {
 pub struct FpsCounter {
     instant: Instant,
     counter: usize,
+}
+
+impl Default for FpsCounter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FpsCounter {

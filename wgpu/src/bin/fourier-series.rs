@@ -1,14 +1,13 @@
 #![feature(decl_macro)]
 
 /// TODO: WIP
-
 use bytemuck::cast_slice;
 use tokio::sync::oneshot;
 use wgpu::wgt::PollType;
 use wgpu::{
-    include_wgsl, BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer,
-    BufferBinding, BufferDescriptor, BufferUsages, ComputePipeline, ComputePipelineDescriptor, Device,
-    Instance, MapMode, PipelineCompilationOptions, Queue,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferBinding,
+    BufferDescriptor, BufferUsages, ComputePipeline, ComputePipelineDescriptor, Device,
+    MapMode, PipelineCompilationOptions, Queue, include_wgsl,
 };
 use wgpu_playground::wgpu_instance_with_env_backend;
 
@@ -112,7 +111,7 @@ impl State {
         rx.await??;
 
         to[..(self.result_buffer.size() as usize)]
-            .copy_from_slice(cast_slice(&*self.result_buffer.get_mapped_range(..)));
+            .copy_from_slice(cast_slice(&self.result_buffer.get_mapped_range(..)));
         self.result_buffer.unmap();
         Ok(())
     }

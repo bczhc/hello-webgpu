@@ -2,7 +2,7 @@ use std::env;
 use std::sync::Arc;
 use std::time::Instant;
 use wgpu_playground::triangle_rotation::State;
-use wgpu_playground::{wgpu_instance_with_env_backend, WgpuStateInitInfo};
+use wgpu_playground::{WgpuStateInitInfo, wgpu_instance_with_env_backend};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -73,8 +73,8 @@ impl ApplicationHandler for App {
                 state.resize((size.width, size.height));
             }
             WindowEvent::MouseInput {
-                state: e_state,
-                button,
+                state: _e_state,
+                button: _,
                 ..
             } => {
                 // if e_state == ElementState::Pressed && button == MouseButton::Left {

@@ -1,13 +1,9 @@
 use std::env;
 use std::sync::Arc;
-use std::time::Instant;
 use winit::application::ApplicationHandler;
-use winit::dpi;
-use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowAttributes, WindowId};
-use wgpu_playground::default;
 
 struct App {
     state: Option<render::State>,
@@ -26,13 +22,9 @@ impl App {
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         // Create window object
-        let mut attributes = WindowAttributes::default();
+        let attributes = WindowAttributes::default();
         // attributes.inner_size = Some(dpi::Size::Physical(PhysicalSize::new(1024, 1024)));
-        let window = Arc::new(
-            event_loop
-                .create_window(attributes)
-                .unwrap(),
-        );
+        let window = Arc::new(event_loop.create_window(attributes).unwrap());
 
         pollster::block_on(async {
             let _a = event_loop.owned_display_handle();
@@ -84,12 +76,15 @@ fn main() {
 }
 
 mod render {
-    use std::sync::Arc;
-    use bytemuck::bytes_of;
+    
     use chrono::Local;
     use log::error;
-    use wgpu::{include_wgsl, BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferBinding, BufferDescriptor, BufferUsages, Color, ColorTargetState, Device, FragmentState, Queue, RenderPipeline, RenderPipelineDescriptor, SurfaceError, VertexAttribute, VertexBufferLayout, VertexFormat, VertexState};
-    use wgpu_playground::{default, wgpu_instance_with_env_backend, ColorExt};
+    use std::sync::Arc;
+    use wgpu::{
+        Color, ColorTargetState, CurrentSurfaceTexture,
+        FragmentState, RenderPipeline, RenderPipelineDescriptor, VertexState, include_wgsl,
+    };
+    use wgpu_playground::{ColorExt, wgpu_instance_with_env_backend};
     use winit::window::Window;
 
     pub struct State {
@@ -105,7 +100,9 @@ mod render {
         pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
             let instance = wgpu_instance_with_env_backend();
             let size = window.inner_size();
-            let surface = instance.create_surface(Arc::clone(&window))?;
+            let surface = instance
+                .create_surface(Arc::clone(&window))
+                .map_err(anyhow::Error::msg)?;
 
             let adapter = instance
                 .request_adapter(&wgpu::RequestAdapterOptions::default())
@@ -156,7 +153,6 @@ mod render {
                 pipeline,
             };
 
-
             // Configure surface for the first time
             state.configure_surface();
 
@@ -186,16 +182,21 @@ mod render {
 
         pub fn render(&self, redraw_callback: impl FnOnce()) {
             // Create texture view
-            let surface_texture = match self
-                .surface
-                .get_current_texture() {
-                Ok(x) => x,
-                Err(SurfaceError::Outdated) => {
+            let surface_texture = match self.surface.get_current_texture() {
+                CurrentSurfaceTexture::Success(texture) => texture,
+                CurrentSurfaceTexture::Suboptimal(texture) => {
+                    self.configure_surface();
+                    texture
+                }
+                CurrentSurfaceTexture::Timeout | CurrentSurfaceTexture::Occluded => {
+                    return;
+                }
+                CurrentSurfaceTexture::Outdated | CurrentSurfaceTexture::Lost => {
                     self.configure_surface();
                     return;
                 }
-                Err(e) => {
-                    error!("Failed to acquire next swapchain texture: {:?}", e);
+                CurrentSurfaceTexture::Validation => {
+                    error!("Validation error in get_current_texture");
                     return;
                 }
             };
@@ -226,7 +227,7 @@ mod render {
                 multiview_mask: None,
             });
 
-            let ts = Local::now().timestamp_nanos_opt().unwrap();
+            let _ts = Local::now().timestamp_nanos_opt().unwrap();
             pass.set_pipeline(&self.pipeline);
             pass.draw(0..3, 0..1);
 
