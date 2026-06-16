@@ -1,4 +1,4 @@
-//! Demonstration of https://github.com/niri-wm/niri/issues/3567.
+//! A demonstration to https://github.com/niri-wm/niri/issues/3567.
 
 use std::env;
 use std::sync::Arc;
